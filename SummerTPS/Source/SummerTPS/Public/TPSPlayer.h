@@ -101,4 +101,10 @@ protected:
 private:
 	/** Timer handle for automatic firing */
 	FTimerHandle TimerHandle_AutomaticFire;
+
+	/** Flag to track if the dedicated aim button is pressed */
+	bool bIsAiming;
+
+	/** Updates the character's rotation settings based on aiming and firing states */
+	void UpdateRotationSettings();
 };

@@ -19,6 +19,9 @@ ATPSPlayer::ATPSPlayer()
 	// Initialize automatic fire rate
 	TimeBetweenShots = 0.1f;
 
+	// Initialize aiming flag
+	bIsAiming = false;
+
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
@@ -160,23 +163,19 @@ void ATPSPlayer::Look(const FInputActionValue& Value)
 
 void ATPSPlayer::AimStarted()
 {
-	// Implement aiming logic here
-	// For example, change camera FOV, adjust character rotation, etc.
-	 GetCharacterMovement()->bOrientRotationToMovement = false; // Stop orienting to movement
-	 bUseControllerRotationYaw = true; // Allow controller to rotate character yaw
-	UE_LOG(LogTemp, Warning, TEXT("Aiming Started!"));
+	bIsAiming = true;
+	UpdateRotationSettings();
 }
 
 void ATPSPlayer::AimStopped()
 {
-	// Implement aiming stop logic here
-	 GetCharacterMovement()->bOrientRotationToMovement = true; // Resume orienting to movement
-	 bUseControllerRotationYaw = false; // Stop controller from rotating character yaw
-	UE_LOG(LogTemp, Warning, TEXT("Aiming Stopped!"));
+	bIsAiming = false;
+	UpdateRotationSettings();
 }
 
 void ATPSPlayer::StartFire()
 {
+	UpdateRotationSettings();
 	Fire(); // Fire immediately on press
 	GetWorldTimerManager().SetTimer(TimerHandle_AutomaticFire, this, &ATPSPlayer::Fire, TimeBetweenShots, true);
 }
@@ -184,6 +183,23 @@ void ATPSPlayer::StartFire()
 void ATPSPlayer::StopFire()
 {
 	GetWorldTimerManager().ClearTimer(TimerHandle_AutomaticFire);
+	UpdateRotationSettings();
+}
+
+void ATPSPlayer::UpdateRotationSettings()
+{
+	bool bShouldOrientToMovement = true;
+	bool bShouldUseControllerRotationYaw = false;
+
+	// If we are aiming OR firing, we want to face the camera direction.
+	if (bIsAiming || GetWorldTimerManager().IsTimerActive(TimerHandle_AutomaticFire))
+	{
+		bShouldOrientToMovement = false;
+		bShouldUseControllerRotationYaw = true;
+	}
+
+	GetCharacterMovement()->bOrientRotationToMovement = bShouldOrientToMovement;
+	bUseControllerRotationYaw = bShouldUseControllerRotationYaw;
 }
 
 void ATPSPlayer::Fire()
