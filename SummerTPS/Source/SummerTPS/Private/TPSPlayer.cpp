@@ -22,6 +22,9 @@ ATPSPlayer::ATPSPlayer()
 	// Initialize aiming flag
 	bIsAiming = false;
 
+	// Initialize weapon socket name
+	WeaponSocketName = FName("Weapon");
+
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
@@ -70,6 +73,36 @@ void ATPSPlayer::BeginPlay()
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
 		{
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
+		}
+	}
+
+	// Spawn and attach the weapon
+	if (WeaponBlueprint && GetMesh() && GetMesh()->DoesSocketExist(WeaponSocketName))
+	{
+		UWorld* const World = GetWorld();
+		if (World)
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.Owner = this;
+			SpawnParams.Instigator = GetInstigator();
+
+			SpawnedWeapon = World->SpawnActor<AActor>(WeaponBlueprint, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+			if (SpawnedWeapon)
+			{
+				FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
+				SpawnedWeapon->AttachToComponent(GetMesh(), AttachmentRules, WeaponSocketName);
+			}
+		}
+	}
+	else
+	{
+		if (!WeaponBlueprint)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("WeaponBlueprint is not set in TPSPlayer."));
+		}
+		if (!GetMesh() || !GetMesh()->DoesSocketExist(WeaponSocketName))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Socket '%s' does not exist on the player mesh."), *WeaponSocketName.ToString());
 		}
 	}
 }

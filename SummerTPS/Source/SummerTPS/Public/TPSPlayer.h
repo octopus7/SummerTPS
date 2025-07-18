@@ -98,6 +98,22 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
 	float TimeBetweenShots;
 
+	/************************************************************************
+	* Weapon Handling
+	************************************************************************/
+
+	/** Blueprint of the weapon to spawn */
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	TSubclassOf<AActor> WeaponBlueprint;
+
+	/** Socket name on the mesh to attach the weapon to */
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	FName WeaponSocketName;
+
+	/** A reference to the spawned weapon */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+	AActor* SpawnedWeapon;
+
 private:
 	/** Timer handle for automatic firing */
 	FTimerHandle TimerHandle_AutomaticFire;
