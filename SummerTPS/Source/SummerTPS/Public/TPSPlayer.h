@@ -73,7 +73,13 @@ protected:
 	/** Called for aiming input (stop) */
 	void AimStopped();
 
-	/** Called for firing input */
+	/** Called for firing input (start) */
+	void StartFire();
+
+	/** Called for firing input (stop) */
+	void StopFire();
+
+	/** Fires a projectile */
 	void Fire();
 
 	/** Projectile spawn point */
@@ -83,4 +89,16 @@ protected:
 	/** Projectile class to spawn */
 	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
 	TSubclassOf<class AActor> ProjectileClass; // Using AActor for now, can be changed to a specific projectile class later
+
+	/** Speed used for the projectile trajectory prediction */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (AllowPrivateAccess = "true"))
+	float ProjectilePredictionSpeed;
+
+	/** Time between shots for automatic fire */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float TimeBetweenShots;
+
+private:
+	/** Timer handle for automatic firing */
+	FTimerHandle TimerHandle_AutomaticFire;
 };

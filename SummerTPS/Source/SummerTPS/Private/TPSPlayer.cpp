@@ -5,12 +5,19 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	// Initialize projectile prediction speed
+	ProjectilePredictionSpeed = 3000.f;
+
+	// Initialize automatic fire rate
+	TimeBetweenShots = 0.1f;
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -37,6 +44,7 @@ ATPSPlayer::ATPSPlayer()
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = 400.0f; // The camera follows at this distance behind the character
 	CameraBoom->bUsePawnControlRotation = true; // Rotate the arm based on the controller
+	CameraBoom->SocketOffset = FVector(0.f, 50.f, 70.f);
 
 	// Create a follow camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
@@ -63,11 +71,27 @@ void ATPSPlayer::BeginPlay()
 	}
 }
 
+#include "Kismet/GameplayStatics.h"
+#include "DrawDebugHelpers.h"
+
 // Called every frame
 void ATPSPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (ProjectileClass && ProjectileSpawnPoint)
+	{
+		FPredictProjectilePathParams PredictParams(20.f, ProjectileSpawnPoint->GetComponentLocation(), GetActorForwardVector() * ProjectilePredictionSpeed, 5.f, ECC_Visibility);
+		FPredictProjectilePathResult PredictResult;
+
+		if (UGameplayStatics::PredictProjectilePath(this, PredictParams, PredictResult))
+		{
+			for (int32 i = 0; i < PredictResult.PathData.Num() - 1; ++i)
+			{
+				DrawDebugLine(GetWorld(), PredictResult.PathData[i].Location, PredictResult.PathData[i+1].Location, FColor::Yellow, false, 0.f, 0, 0.5f);
+			}
+		}
+	}
 }
 
 // Called to bind functionality to input
@@ -93,7 +117,8 @@ void ATPSPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 		EnhancedInputComponent->BindAction(AimAction, ETriggerEvent::Completed, this, &ATPSPlayer::AimStopped);
 
 		//Firing
-		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ATPSPlayer::Fire);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ATPSPlayer::StartFire);
+		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &ATPSPlayer::StopFire);
 	}
 }
 
@@ -150,6 +175,17 @@ void ATPSPlayer::AimStopped()
 	UE_LOG(LogTemp, Warning, TEXT("Aiming Stopped!"));
 }
 
+void ATPSPlayer::StartFire()
+{
+	Fire(); // Fire immediately on press
+	GetWorldTimerManager().SetTimer(TimerHandle_AutomaticFire, this, &ATPSPlayer::Fire, TimeBetweenShots, true);
+}
+
+void ATPSPlayer::StopFire()
+{
+	GetWorldTimerManager().ClearTimer(TimerHandle_AutomaticFire);
+}
+
 void ATPSPlayer::Fire()
 {
 	// Implement projectile firing logic here
@@ -162,8 +198,9 @@ void ATPSPlayer::Fire()
 			SpawnParams.Owner = this;
 			SpawnParams.Instigator = GetInstigator();
 
-			// Get the rotation of the camera for firing direction
-			FRotator SpawnRotation = FollowCamera->GetComponentRotation();
+			// Get the forward vector of the character for firing direction
+			FVector CharacterForward = GetActorForwardVector();
+			FRotator SpawnRotation = CharacterForward.Rotation();
 			FVector SpawnLocation = ProjectileSpawnPoint->GetComponentLocation();
 
 			// Spawn the projectile
@@ -171,6 +208,13 @@ void ATPSPlayer::Fire()
 			if (SpawnedProjectile)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("Projectile Fired!"));
+
+				// Update the prediction speed from the spawned projectile
+				UProjectileMovementComponent* ProjectileMovement = SpawnedProjectile->FindComponentByClass<UProjectileMovementComponent>();
+				if (ProjectileMovement)
+				{
+					ProjectilePredictionSpeed = ProjectileMovement->InitialSpeed;
+				}
 			}
 		}
 	}
