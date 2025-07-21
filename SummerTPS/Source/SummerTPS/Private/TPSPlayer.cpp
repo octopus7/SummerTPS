@@ -6,6 +6,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "DrawDebugHelpers.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
@@ -21,6 +23,24 @@ ATPSPlayer::ATPSPlayer()
 
 	// Initialize aiming flag
 	bIsAiming = false;
+
+	// --- Camera Control Defaults ---
+	DefaultCameraArmLength = 400.0f;
+	AimingCameraArmLength = 80.0f;
+	DefaultCameraSocketOffset = FVector(0.f, 50.f, 70.f);
+	AimingCameraSocketOffset = FVector(0.f, 70.f, 60.f);
+	CameraInterpSpeed = 20.0f;
+
+	// Initialize cover flag
+	bIsCovered = false;
+
+	// Initialize exit cover animation variables
+	bIsExitingCover = false;
+	ExitCoverDuration = 0.1f;
+
+	// Initialize enter cover animation variables
+	bIsEnteringCover = false;
+	EnterCoverDuration = 0.1f;
 
 	// Initialize weapon socket name
 	WeaponSocketName = FName("Weapon");
@@ -66,6 +86,10 @@ ATPSPlayer::ATPSPlayer()
 void ATPSPlayer::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Set initial camera boom properties
+	CameraBoom->TargetArmLength = DefaultCameraArmLength;
+	CameraBoom->SocketOffset = DefaultCameraSocketOffset;
 	
 	//Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
@@ -107,13 +131,64 @@ void ATPSPlayer::BeginPlay()
 	}
 }
 
-#include "Kismet/GameplayStatics.h"
-#include "DrawDebugHelpers.h"
-
 // Called every frame
 void ATPSPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// --- Camera Interpolation ---
+	float TargetArmLength = bIsAiming ? AimingCameraArmLength : DefaultCameraArmLength;
+	FVector TargetSocketOffset = bIsAiming ? AimingCameraSocketOffset : DefaultCameraSocketOffset;
+
+	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, CameraInterpSpeed);
+	CameraBoom->SocketOffset = FMath::VInterpTo(CameraBoom->SocketOffset, TargetSocketOffset, DeltaTime, CameraInterpSpeed);
+
+	if (bIsCovered)
+	{
+		// If currently entering cover, interpolate position
+		if (bIsEnteringCover)
+		{
+			float ElapsedTime = GetWorld()->GetTimeSeconds() - EnterCoverStartTime;
+			float Alpha = FMath::Clamp(ElapsedTime / EnterCoverDuration, 0.f, 1.f);
+			FVector CurrentLocation = FMath::Lerp(EnterCoverStartLocation, EnterCoverTargetLocation, Alpha);
+			FRotator CurrentRotation = FMath::Lerp(EnterCoverStartRotation, EnterCoverTargetRotation, Alpha);
+			SetActorLocationAndRotation(CurrentLocation, CurrentRotation);
+
+			if (Alpha >= 1.f)
+			{
+				bIsEnteringCover = false;
+			}
+			DrawDebugString(GetWorld(), FVector(0, 0, 100), "Entering Cover", this, FColor::Cyan, 0.f);
+		}
+		else
+		{
+			// Keep the player facing away from the cover wall
+			SetActorRotation((-CoverWallNormal).Rotation());
+			DrawDebugString(GetWorld(), FVector(0, 0, 100), "Covered", this, FColor::Green, 0.f);
+		}
+
+		// Draw an arrow indicating the cover normal
+		FVector ArrowStart = GetActorLocation() + FVector(0, 0, 50.f); // Chest height
+		FVector ArrowEnd = ArrowStart + CoverWallNormal * 50.f;
+		DrawDebugDirectionalArrow(GetWorld(), ArrowStart, ArrowEnd, 2.5f, FColor::Blue, false, 0.f, 0, 1.0f);
+	}
+	else if (bIsExitingCover)
+	{
+		float ElapsedTime = GetWorld()->GetTimeSeconds() - ExitCoverStartTime;
+		float Alpha = FMath::Clamp(ElapsedTime / ExitCoverDuration, 0.f, 1.f);
+		FVector CurrentLocation = FMath::Lerp(ExitCoverStartLocation, ExitCoverTargetLocation, Alpha);
+		SetActorLocation(CurrentLocation);
+
+		if (Alpha >= 1.f)
+		{
+			bIsExitingCover = false;
+		}
+		DrawDebugString(GetWorld(), FVector(0, 0, 100), "Exiting Cover", this, FColor::Yellow, 0.f);
+	}
+	else
+	{
+		DrawDebugString(GetWorld(), FVector(0, 0, 100), "Not Covered", this, FColor::Red, 0.f);
+	}
 
 	if (ProjectileClass && ProjectileSpawnPoint)
 	{
@@ -155,6 +230,9 @@ void ATPSPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 		//Firing
 		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Started, this, &ATPSPlayer::StartFire);
 		EnhancedInputComponent->BindAction(FireAction, ETriggerEvent::Completed, this, &ATPSPlayer::StopFire);
+
+		//Cover
+		EnhancedInputComponent->BindAction(CoverAction, ETriggerEvent::Started, this, &ATPSPlayer::Cover);
 	}
 }
 
@@ -165,19 +243,39 @@ void ATPSPlayer::Move(const FInputActionValue& Value)
 
 	if (Controller != nullptr)
 	{
-		// find out which way is forward
-		const FRotator Rotation = Controller->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
+		if (bIsCovered)
+		{
+			FVector MoveDirection = FVector::CrossProduct(CoverWallNormal, FVector::UpVector) * MovementVector.X;
 
-		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	
-		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+			// Check if there is a wall in the direction of movement
+			FHitResult HitResult;
+			FVector Start = GetActorLocation() + MoveDirection * 50.f; // Check slightly in front of the player
+			FVector End = Start - CoverWallNormal * 100.f; // Check towards the wall
+			FCollisionQueryParams QueryParams;
+			QueryParams.AddIgnoredActor(this);
 
-		// add movement 
-		AddMovementInput(ForwardDirection, MovementVector.Y);
-		AddMovementInput(RightDirection, MovementVector.X);
+			if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, QueryParams))
+			{
+				// Only move if there is a wall to stay in cover
+				AddMovementInput(MoveDirection, 1.f);
+			}
+		}
+		else
+		{
+			// find out which way is forward
+			const FRotator Rotation = Controller->GetControlRotation();
+			const FRotator YawRotation(0, Rotation.Yaw, 0);
+
+			// get forward vector
+			const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		
+			// get right vector 
+			const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+			// add movement 
+			AddMovementInput(ForwardDirection, MovementVector.Y);
+			AddMovementInput(RightDirection, MovementVector.X);
+		}
 	}
 }
 
@@ -271,4 +369,81 @@ void ATPSPlayer::Fire()
 	{
 		UE_LOG(LogTemp, Warning, TEXT("ProjectileClass or ProjectileSpawnPoint not set!"));
 	}
+}
+
+void ATPSPlayer::Cover()
+{
+	if (bIsCovered)
+	{
+		ExitCover();
+	}
+	else
+	{
+		TryEnterCover();
+	}
+}
+
+void ATPSPlayer::TryEnterCover()
+{
+	UE_LOG(LogTemp, Warning, TEXT("TryEnterCover!"));
+
+	FVector Start = GetActorLocation();
+	FVector End = Start + GetActorForwardVector() * 100.f;
+	FHitResult HitResult;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	// For now, we'll use the Visibility channel. We'll create a custom "Cover" channel later.
+	if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, QueryParams))
+	{
+		// If already exiting cover, stop it
+		if (bIsExitingCover)
+		{
+			bIsExitingCover = false;
+		}
+
+		bIsCovered = true;
+		CoverWallNormal = HitResult.ImpactNormal;
+
+		// --- Snap to cover ---
+		// Calculate the new location to snap to the wall
+		const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
+		FVector TargetLocation = HitResult.ImpactPoint + CoverWallNormal * (CapsuleRadius + 2.0f); // Add a small buffer to avoid clipping
+		TargetLocation.Z = GetActorLocation().Z; // Keep the current Z location to prevent snapping up/down
+
+		// Set up enter cover animation
+		bIsEnteringCover = true;
+		EnterCoverStartTime = GetWorld()->GetTimeSeconds();
+		EnterCoverStartLocation = GetActorLocation();
+		EnterCoverTargetLocation = TargetLocation;
+		EnterCoverStartRotation = GetActorRotation();
+		EnterCoverTargetRotation = (-CoverWallNormal).Rotation();
+
+		// Stop movement and set initial rotation
+		GetCharacterMovement()->StopMovementImmediately();
+		// SetActorLocationAndRotation(NewLocation, (-CoverWallNormal).Rotation()); // This will be handled by interpolation
+
+		// Disable rotation to movement and enable controller rotation yaw
+		GetCharacterMovement()->bOrientRotationToMovement = false;
+		bUseControllerRotationYaw = true;
+
+		UE_LOG(LogTemp, Warning, TEXT("Entered Cover!"));
+	}
+}
+
+void ATPSPlayer::ExitCover()
+{
+	bIsCovered = false;
+
+	// Set up exit cover animation
+	bIsExitingCover = true;
+	ExitCoverStartTime = GetWorld()->GetTimeSeconds();
+	ExitCoverStartLocation = GetActorLocation();
+	ExitCoverTargetLocation = GetActorLocation() + CoverWallNormal * 10.f;
+
+	// Restore normal movement and rotation settings
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	bUseControllerRotationYaw = false;
+
+	UE_LOG(LogTemp, Warning, TEXT("Exited Cover!"));
 }

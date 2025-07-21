@@ -37,6 +37,30 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	class UCameraComponent* FollowCamera;
 
+	/************************************************************************
+	* Camera Control
+	************************************************************************/
+
+	/** Default distance of the camera from the player */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float DefaultCameraArmLength;
+
+	/** Distance of the camera from the player when aiming */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float AimingCameraArmLength;
+
+	/** Default socket offset for the camera boom */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	FVector DefaultCameraSocketOffset;
+
+	/** Socket offset for the camera boom when aiming */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	FVector AimingCameraSocketOffset;
+
+	/** Speed at which the camera interpolates to its new position */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float CameraInterpSpeed;
+
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
@@ -61,6 +85,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* FireAction;
 
+	/** Cover Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* CoverAction;
+
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
 
@@ -78,6 +106,9 @@ protected:
 
 	/** Called for firing input (stop) */
 	void StopFire();
+
+	/** Called for cover input */
+	void Cover();
 
 	/** Fires a projectile */
 	void Fire();
@@ -113,6 +144,68 @@ protected:
 	/** A reference to the spawned weapon */
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	AActor* SpawnedWeapon;
+
+protected:
+	/************************************************************************
+	* Cover System
+	************************************************************************/
+
+	/** Tries to find cover and enter it */
+	void TryEnterCover();
+
+	/** Exits from the current cover */
+	void ExitCover();
+
+	/** True if player is in cover. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cover")
+	bool bIsCovered;
+
+	/** The normal of the cover surface */
+	FVector CoverWallNormal;
+
+	/************************************************************************
+	* Enter Cover Animation
+	************************************************************************/
+	/** True if player is currently entering cover with animation. */
+	bool bIsEnteringCover;
+
+	/** Time when the enter cover animation started. */
+	float EnterCoverStartTime;
+
+	/** Duration of the enter cover animation. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cover")
+	float EnterCoverDuration;
+
+	/** Player's location when enter cover animation started. */
+	FVector EnterCoverStartLocation;
+
+	/** Target location for the player after entering cover animation. */
+	FVector EnterCoverTargetLocation;
+
+	/** Player's rotation when enter cover animation started. */
+	FRotator EnterCoverStartRotation;
+
+	/** Target rotation for the player after entering cover animation. */
+	FRotator EnterCoverTargetRotation;
+
+	/************************************************************************
+	* Exit Cover Animation
+	************************************************************************/
+	/** True if player is currently exiting cover with animation. */
+	bool bIsExitingCover;
+
+	/** Time when the exit cover animation started. */
+	float ExitCoverStartTime;
+
+	/** Duration of the exit cover animation. */
+	UPROPERTY(EditDefaultsOnly, Category = "Cover")
+	float ExitCoverDuration;
+
+	/** Player's location when exit cover animation started. */
+	FVector ExitCoverStartLocation;
+
+	/** Target location for the player after exiting cover animation. */
+	FVector ExitCoverTargetLocation;
 
 private:
 	/** Timer handle for automatic firing */
