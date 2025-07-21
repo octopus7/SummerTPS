@@ -24,11 +24,16 @@ ATPSPlayer::ATPSPlayer()
 	// Initialize aiming flag
 	bIsAiming = false;
 
+	// Initialize sprinting flag
+	bIsSprinting = false;
+
 	// --- Camera Control Defaults ---
 	DefaultCameraArmLength = 400.0f;
 	AimingCameraArmLength = 80.0f;
+	SprintCameraArmLength = 200.0f; // Example value, adjust as needed
 	DefaultCameraSocketOffset = FVector(0.f, 50.f, 70.f);
 	AimingCameraSocketOffset = FVector(0.f, 70.f, 60.f);
+	SprintCameraSocketOffset = FVector(0.f, 60.f, 40.f); // Example value, adjust as needed
 	CameraInterpSpeed = 20.0f;
 
 	// Initialize cover flag
@@ -41,6 +46,10 @@ ATPSPlayer::ATPSPlayer()
 	// Initialize enter cover animation variables
 	bIsEnteringCover = false;
 	EnterCoverDuration = 0.1f;
+
+	// Initialize movement speeds
+	DefaultWalkSpeed = 500.f;
+	SprintWalkSpeed = 800.f;
 
 	// Initialize weapon socket name
 	WeaponSocketName = FName("Weapon");
@@ -137,8 +146,24 @@ void ATPSPlayer::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// --- Camera Interpolation ---
-	float TargetArmLength = bIsAiming ? AimingCameraArmLength : DefaultCameraArmLength;
-	FVector TargetSocketOffset = bIsAiming ? AimingCameraSocketOffset : DefaultCameraSocketOffset;
+	float TargetArmLength;
+	FVector TargetSocketOffset;
+
+	if (bIsSprinting)
+	{
+		TargetArmLength = SprintCameraArmLength;
+		TargetSocketOffset = SprintCameraSocketOffset;
+	}
+	else if (bIsAiming)
+	{
+		TargetArmLength = AimingCameraArmLength;
+		TargetSocketOffset = AimingCameraSocketOffset;
+	}
+	else
+	{
+		TargetArmLength = DefaultCameraArmLength;
+		TargetSocketOffset = DefaultCameraSocketOffset;
+	}
 
 	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArmLength, DeltaTime, CameraInterpSpeed);
 	CameraBoom->SocketOffset = FMath::VInterpTo(CameraBoom->SocketOffset, TargetSocketOffset, DeltaTime, CameraInterpSpeed);
@@ -233,6 +258,10 @@ void ATPSPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 
 		//Cover
 		EnhancedInputComponent->BindAction(CoverAction, ETriggerEvent::Started, this, &ATPSPlayer::Cover);
+
+		//Sprint
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ATPSPlayer::SprintStarted);
+		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ATPSPlayer::SprintStopped);
 	}
 }
 
@@ -381,6 +410,18 @@ void ATPSPlayer::Cover()
 	{
 		TryEnterCover();
 	}
+}
+
+void ATPSPlayer::SprintStarted()
+{
+	bIsSprinting = true;
+	GetCharacterMovement()->MaxWalkSpeed = SprintWalkSpeed;
+}
+
+void ATPSPlayer::SprintStopped()
+{
+	bIsSprinting = false;
+	GetCharacterMovement()->MaxWalkSpeed = DefaultWalkSpeed;
 }
 
 void ATPSPlayer::TryEnterCover()

@@ -57,6 +57,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	FVector AimingCameraSocketOffset;
 
+	/** Distance of the camera from the player when sprinting */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float SprintCameraArmLength;
+
+	/** Socket offset for the camera boom when sprinting */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	FVector SprintCameraSocketOffset;
+
 	/** Speed at which the camera interpolates to its new position */
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	float CameraInterpSpeed;
@@ -89,6 +97,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* CoverAction;
 
+	/** Sprint Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* SprintAction;
+
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
 
@@ -110,6 +122,12 @@ protected:
 	/** Called for cover input */
 	void Cover();
 
+	/** Called for sprint input (start) */
+	void SprintStarted();
+
+	/** Called for sprint input (stop) */
+	void SprintStopped();
+
 	/** Fires a projectile */
 	void Fire();
 
@@ -124,6 +142,14 @@ protected:
 	/** Speed used for the projectile trajectory prediction */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (AllowPrivateAccess = "true"))
 	float ProjectilePredictionSpeed;
+
+	/** Default walk speed of the character */
+	UPROPERTY(EditDefaultsOnly, Category = "Movement")
+	float DefaultWalkSpeed;
+
+	/** Sprint walk speed of the character */
+	UPROPERTY(EditDefaultsOnly, Category = "Movement")
+	float SprintWalkSpeed;
 
 	/** Time between shots for automatic fire */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
@@ -213,6 +239,9 @@ private:
 
 	/** Flag to track if the dedicated aim button is pressed */
 	bool bIsAiming;
+
+	/** Flag to track if the player is sprinting */
+	bool bIsSprinting;
 
 	/** Updates the character's rotation settings based on aiming and firing states */
 	void UpdateRotationSettings();
