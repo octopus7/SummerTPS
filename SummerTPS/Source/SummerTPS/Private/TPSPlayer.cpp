@@ -215,9 +215,22 @@ void ATPSPlayer::Tick(float DeltaTime)
 		DrawDebugString(GetWorld(), FVector(0, 0, 100), "Not Covered", this, FColor::Red, 0.f);
 	}
 
-	if (ProjectileClass && ProjectileSpawnPoint)
+	if (ProjectileClass && SpawnedWeapon)
 	{
-		FPredictProjectilePathParams PredictParams(20.f, ProjectileSpawnPoint->GetComponentLocation(), GetActorForwardVector() * ProjectilePredictionSpeed, 5.f, ECC_Visibility);
+		FVector MuzzleLocation;
+		FRotator MuzzleRotation;
+		if (USceneComponent* MuzzleSocket = SpawnedWeapon->FindComponentByClass<USceneComponent>())
+		{
+			MuzzleLocation = MuzzleSocket->GetSocketLocation(FName("Muzzle"));
+			MuzzleRotation = MuzzleSocket->GetSocketRotation(FName("Muzzle"));
+		}
+		else
+		{
+			MuzzleLocation = ProjectileSpawnPoint->GetComponentLocation();
+			MuzzleRotation = GetActorForwardVector().Rotation();
+		}
+
+		FPredictProjectilePathParams PredictParams(20.f, MuzzleLocation, MuzzleRotation.Vector() * ProjectilePredictionSpeed, 5.f, ECC_Visibility);
 		FPredictProjectilePathResult PredictResult;
 
 		if (UGameplayStatics::PredictProjectilePath(this, PredictParams, PredictResult))
@@ -365,7 +378,7 @@ void ATPSPlayer::UpdateRotationSettings()
 void ATPSPlayer::Fire()
 {
 	// Implement projectile firing logic here
-	if (ProjectileClass && ProjectileSpawnPoint)
+	if (ProjectileClass && SpawnedWeapon)
 	{
 		UWorld* World = GetWorld();
 		if (World)
@@ -374,10 +387,21 @@ void ATPSPlayer::Fire()
 			SpawnParams.Owner = this;
 			SpawnParams.Instigator = GetInstigator();
 
-			// Get the forward vector of the character for firing direction
-			FVector CharacterForward = GetActorForwardVector();
-			FRotator SpawnRotation = CharacterForward.Rotation();
-			FVector SpawnLocation = ProjectileSpawnPoint->GetComponentLocation();
+			// Get the Muzzle socket transform from the spawned weapon
+			FVector SpawnLocation;
+			FRotator SpawnRotation;
+			if (USceneComponent* MuzzleSocket = SpawnedWeapon->FindComponentByClass<USceneComponent>())
+			{
+				SpawnLocation = MuzzleSocket->GetSocketLocation(FName("Muzzle"));
+				SpawnRotation = MuzzleSocket->GetSocketRotation(FName("Muzzle"));
+			}
+			else
+			{
+				// Fallback to projectile spawn point if Muzzle socket is not found
+				SpawnLocation = ProjectileSpawnPoint->GetComponentLocation();
+				SpawnRotation = GetActorForwardVector().Rotation();
+			}
+
 
 			// Spawn the projectile
 			AActor* SpawnedProjectile = World->SpawnActor<AActor>(ProjectileClass, SpawnLocation, SpawnRotation, SpawnParams);
@@ -396,7 +420,7 @@ void ATPSPlayer::Fire()
 	}
 	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ProjectileClass or ProjectileSpawnPoint not set!"));
+		UE_LOG(LogTemp, Warning, TEXT("ProjectileClass or SpawnedWeapon not set!"));
 	}
 }
 
