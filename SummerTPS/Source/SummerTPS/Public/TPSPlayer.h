@@ -139,6 +139,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
 	TSubclassOf<class AActor> ProjectileClass; // Using AActor for now, can be changed to a specific projectile class later
 
+	/** Niagara FX to spawn on fire */
+	UPROPERTY(EditAnywhere, Category = "Effects")
+	class UNiagaraSystem* FireEffect;
+
 	/** Speed used for the projectile trajectory prediction */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (AllowPrivateAccess = "true"))
 	float ProjectilePredictionSpeed;

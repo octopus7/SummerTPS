@@ -16,6 +16,7 @@ ASummerTPSProjectile::ASummerTPSProjectile()
 	CollisionComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	CollisionComp->InitSphereRadius(5.0f);
 	CollisionComp->BodyInstance.SetCollisionProfileName("Projectile");
+	CollisionComp->OnComponentHit.AddDynamic(this, &ASummerTPSProjectile::OnHit);		// set up a notification for when this component hits something blocking
 	CollisionComp->OnComponentBeginOverlap.AddDynamic(this, &ASummerTPSProjectile::OnOverlapBegin);
 
 	// Players can't walk on it
@@ -41,7 +42,11 @@ ASummerTPSProjectile::ASummerTPSProjectile()
 void ASummerTPSProjectile::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	if (SpawnEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), SpawnEffect, GetActorLocation());
+	}
 }
 
 // Called every frame
@@ -53,13 +58,43 @@ void ASummerTPSProjectile::Tick(float DeltaTime)
 
 void ASummerTPSProjectile::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if ((OtherActor != nullptr) && (OtherActor != this) && (OtherComp != nullptr))
-	{
-		if (OverlapEffect)
-		{
-			UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), OverlapEffect, GetActorLocation());
-		}
+	AActor* MyOwner = GetOwner();
 
-		Destroy();
+	// Ignore collision with self, the owner (player), and any other actors the owner owns (like the weapon).
+	if (OtherActor && (OtherActor == this || OtherActor == MyOwner || OtherActor->GetOwner() == MyOwner))
+	{
+		return;
 	}
+
+	// If we hit anything else (including world geometry where OtherActor is null), spawn the effect.
+	if (OverlapEffect)
+	{
+		// Use the impact point from the sweep result for a more accurate spawn location.
+		// Fall back to the actor's location if the impact point is not available.
+		const FVector SpawnLocation = (bFromSweep && SweepResult.ImpactPoint != FVector::ZeroVector) ? SweepResult.ImpactPoint : GetActorLocation();
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), OverlapEffect, SpawnLocation);
+	}
+
+	// Destroy the projectile after the effect has been spawned.
+	Destroy();
+}
+
+void ASummerTPSProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	AActor* MyOwner = GetOwner();
+
+	// Ignore collision with self, the owner (player), and any other actors the owner owns (like the weapon).
+	if (OtherActor && (OtherActor == this || OtherActor == MyOwner || OtherActor->GetOwner() == MyOwner))
+	{
+		return;
+	}
+
+	// If we hit anything else, spawn the effect at the impact point.
+	if (OverlapEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), OverlapEffect, Hit.ImpactPoint);
+	}
+
+	// Destroy the projectile after the effect has been spawned.
+	Destroy();
 }

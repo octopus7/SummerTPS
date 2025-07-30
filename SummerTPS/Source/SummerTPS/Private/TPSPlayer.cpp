@@ -8,6 +8,7 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "NiagaraFunctionLibrary.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
@@ -408,6 +409,11 @@ void ATPSPlayer::Fire()
 			if (SpawnedProjectile)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("Projectile Fired!"));
+
+				if (FireEffect)
+				{
+					UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), FireEffect, SpawnLocation);
+				}
 
 				// Update the prediction speed from the spawned projectile
 				UProjectileMovementComponent* ProjectileMovement = SpawnedProjectile->FindComponentByClass<UProjectileMovementComponent>();
