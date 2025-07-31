@@ -70,9 +70,9 @@ void ASummerTPSProjectile::OnOverlapBegin(UPrimitiveComponent* OverlappedCompone
 	if (OverlapEffect)
 	{
 		// Use the impact point from the sweep result for a more accurate spawn location.
-		// Fall back to the actor's location if the impact point is not available.
-		const FVector SpawnLocation = (bFromSweep && SweepResult.ImpactPoint != FVector::ZeroVector) ? SweepResult.ImpactPoint : GetActorLocation();
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), OverlapEffect, SpawnLocation);
+		// Fall back to the actor's transform if the impact point is not available.
+		const FTransform SpawnTransform = bFromSweep ? FTransform(SweepResult.ImpactNormal.Rotation(), SweepResult.ImpactPoint) : GetActorTransform();
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), OverlapEffect, SpawnTransform.GetLocation(), SpawnTransform.GetRotation().Rotator());
 	}
 
 	// Destroy the projectile after the effect has been spawned.

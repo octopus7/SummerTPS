@@ -412,7 +412,7 @@ void ATPSPlayer::Fire()
 
 				if (FireEffect)
 				{
-					UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), FireEffect, SpawnLocation);
+					UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), FireEffect, SpawnLocation, SpawnRotation);
 				}
 
 				// Update the prediction speed from the spawned projectile
