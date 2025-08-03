@@ -43,6 +43,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Effects")
 	UNiagaraSystem* SpawnEffect;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
+	float Damage;
+
 	/** called when projectile overlaps something */
 	UFUNCTION()
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);

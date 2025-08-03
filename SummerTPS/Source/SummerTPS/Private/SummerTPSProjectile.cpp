@@ -5,6 +5,7 @@
 #include "Components/SphereComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 // Sets default values
 ASummerTPSProjectile::ASummerTPSProjectile()
@@ -36,6 +37,8 @@ ASummerTPSProjectile::ASummerTPSProjectile()
 
 	// Die after 3 seconds by default
 	InitialLifeSpan = 3.0f;
+
+	Damage = 100.0f;
 }
 
 // Called when the game starts or when spawned
@@ -66,6 +69,8 @@ void ASummerTPSProjectile::OnOverlapBegin(UPrimitiveComponent* OverlappedCompone
 		return;
 	}
 
+	UGameplayStatics::ApplyDamage(OtherActor, Damage, MyOwner->GetInstigatorController(), this, UDamageType::StaticClass());
+
 	// If we hit anything else (including world geometry where OtherActor is null), spawn the effect.
 	if (OverlapEffect)
 	{
@@ -88,6 +93,8 @@ void ASummerTPSProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActo
 	{
 		return;
 	}
+
+	UGameplayStatics::ApplyDamage(OtherActor, Damage, MyOwner->GetInstigatorController(), this, UDamageType::StaticClass());
 
 	// If we hit anything else, spawn the effect at the impact point.
 	if (OverlapEffect)

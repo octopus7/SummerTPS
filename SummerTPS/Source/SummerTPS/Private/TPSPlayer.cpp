@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
 #include "NiagaraFunctionLibrary.h"
+#include "HealthComponent.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
@@ -90,6 +91,8 @@ ATPSPlayer::ATPSPlayer()
 	// Create a projectile spawn point
 	ProjectileSpawnPoint = CreateDefaultSubobject<USceneComponent>(TEXT("ProjectileSpawnPoint"));
 	ProjectileSpawnPoint->SetupAttachment(GetMesh()); // Attach to mesh, can be adjusted to a specific socket later
+
+	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 }
 
 // Called when the game starts or when spawned
@@ -138,6 +141,11 @@ void ATPSPlayer::BeginPlay()
 		{
 			UE_LOG(LogTemp, Warning, TEXT("Socket '%s' does not exist on the player mesh."), *WeaponSocketName.ToString());
 		}
+	}
+
+	if (HealthComponent)
+	{
+		HealthComponent->OnHealthChanged.AddDynamic(this, &ATPSPlayer::OnHealthChanged);
 	}
 }
 
@@ -517,4 +525,40 @@ void ATPSPlayer::ExitCover()
 	bUseControllerRotationYaw = false;
 
 	UE_LOG(LogTemp, Warning, TEXT("Exited Cover!"));
+}
+
+void ATPSPlayer::OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser)
+{
+    if (Health <= 0.0f && !bIsDead)
+    {
+        OnDeath();
+    }
+}
+
+void ATPSPlayer::OnDeath()
+{
+	if (bIsDead)
+	{
+		return;
+	}
+
+	bIsDead = true;
+
+	// Disable input
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (PlayerController)
+	{
+		DisableInput(PlayerController);
+	}
+
+	// Ragdoll
+	GetMesh()->SetSimulatePhysics(true);
+	GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Stop character movement
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->DisableMovement();
+
+	UE_LOG(LogTemp, Warning, TEXT("Player has died!"));
 }

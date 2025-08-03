@@ -2,12 +2,17 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Perception/AIPerceptionComponent.h" 
+#include "Perception/AISenseConfig_Sight.h"   
+#include "EnemyAIController.h"               
 #include "EnemyCharacter.generated.h"
 
 class UHealthComponent;
 class AWeapon;
+class UBehaviorTree; 
+class UBlackboardData; 
 
-UCLASS()
+UCLASS(Blueprintable, meta = (AIControllerClass = "AEnemyAIController")) 
 class SUMMERTPS_API AEnemyCharacter : public ACharacter
 {
     GENERATED_BODY()
@@ -42,4 +47,29 @@ private:
     AWeapon* CurrentWeapon;
 
     bool bIsDead;
+
+protected: 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
+    UAIPerceptionComponent* AIPerceptionComponent;
+
+    UPROPERTY(EditDefaultsOnly, Category = "AI")
+    UBehaviorTree* BehaviorTree;
+
+    UPROPERTY(EditDefaultsOnly, Category = "AI")
+    UBlackboardData* BlackboardData;
+
+    UPROPERTY(EditDefaultsOnly, Category = "AI")
+    float SightRadius = 1000.0f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "AI")
+    float LoseSightRadius = 1500.0f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "AI")
+    float PeripheralVisionAngleDegrees = 90.0f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "AI")
+    float SightDetectionByAffiliation = 0.0f;
+
+    UFUNCTION()
+    void OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
 };
