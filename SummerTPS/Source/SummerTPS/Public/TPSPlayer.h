@@ -4,6 +4,7 @@
 #include "GameFramework/Character.h"
 #include "TPSPlayer.generated.h"
 
+class UHealthComponent;
 class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
@@ -175,6 +176,9 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	AActor* SpawnedWeapon;
 
+UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UHealthComponent* HealthComponent;
+
 protected:
 	/************************************************************************
 	* Cover System
@@ -249,4 +253,13 @@ private:
 
 	/** Updates the character's rotation settings based on aiming and firing states */
 	void UpdateRotationSettings();
+
+	UFUNCTION()
+	void OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+
+private:
+	bool bIsDead;
+
+	UFUNCTION()
+	void OnDeath();
 };
