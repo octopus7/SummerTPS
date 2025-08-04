@@ -10,6 +10,8 @@
 #include "DrawDebugHelpers.h"
 #include "NiagaraFunctionLibrary.h"
 #include "HealthComponent.h"
+#include "Perception/AIPerceptionStimuliSourceComponent.h"
+#include "Perception/AISense_Sight.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
@@ -93,6 +95,10 @@ ATPSPlayer::ATPSPlayer()
 	ProjectileSpawnPoint->SetupAttachment(GetMesh()); // Attach to mesh, can be adjusted to a specific socket later
 
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+
+	StimuliSourceComponent = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSourceComponent"));
+        StimuliSourceComponent->bAutoRegister = true;
+    StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
 }
 
 // Called when the game starts or when spawned

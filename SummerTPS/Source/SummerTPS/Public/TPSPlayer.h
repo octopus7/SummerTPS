@@ -8,6 +8,7 @@ class UHealthComponent;
 class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
+class UAIPerceptionStimuliSourceComponent;
 
 UCLASS()
 class SUMMERTPS_API ATPSPlayer : public ACharacter
@@ -178,6 +179,9 @@ protected:
 
 UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UHealthComponent* HealthComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UAIPerceptionStimuliSourceComponent* StimuliSourceComponent;
 
 protected:
 	/************************************************************************

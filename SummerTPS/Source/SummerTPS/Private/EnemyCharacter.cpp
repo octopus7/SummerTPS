@@ -8,6 +8,8 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Perception/AISenseConfig_Sight.h"
+#include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
 
 AEnemyCharacter::AEnemyCharacter()
 {
@@ -19,13 +21,14 @@ AEnemyCharacter::AEnemyCharacter()
 
     // Configure Sight Sense
     UAISenseConfig_Sight* SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
-    AIPerceptionComponent->ConfigureSense(*SightConfig);
     SightConfig->SightRadius = SightRadius;
     SightConfig->LoseSightRadius = LoseSightRadius;
     SightConfig->PeripheralVisionAngleDegrees = PeripheralVisionAngleDegrees;
     SightConfig->DetectionByAffiliation.bDetectEnemies = true;
     SightConfig->DetectionByAffiliation.bDetectFriendlies = false;
     SightConfig->DetectionByAffiliation.bDetectNeutrals = false;
+
+    AIPerceptionComponent->ConfigureSense(*SightConfig);
 
     AIPerceptionComponent->SetDominantSense(SightConfig->GetSenseImplementation());
     AIPerceptionComponent->OnTargetPerceptionUpdated.AddDynamic(this, &AEnemyCharacter::OnPerceptionUpdated);
@@ -67,17 +70,32 @@ void AEnemyCharacter::BeginPlay()
 
 void AEnemyCharacter::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
+    GEngine->AddOnScreenDebugMessage(-1, 0.1f, FColor::Cyan, TEXT("OnPerceptionUpdated Called"));
+
     AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon && AICon->GetBlackboardComponent())
+    if (AICon)
     {
-        if (Stimulus.WasSuccessfullySensed())
+        if (AICon->GetBlackboardComponent())
         {
-            AICon->GetBlackboardComponent()->SetValueAsObject(TEXT("TargetActor"), Actor);
+            if (Stimulus.WasSuccessfullySensed())
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, FString::Printf(TEXT("Target Sensed: %s"), *Actor->GetName()));
+                AICon->GetBlackboardComponent()->SetValueAsObject(TEXT("TargetActor"), Actor);
+            }
+            else
+            {
+                GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Red, TEXT("Target Lost"));
+                AICon->GetBlackboardComponent()->ClearValue(TEXT("TargetActor"));
+            }
         }
         else
         {
-            AICon->GetBlackboardComponent()->ClearValue(TEXT("TargetActor"));
+            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Blackboard Component is NOT valid."));
         }
+    }
+    else
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("AI Controller is NOT valid."));
     }
 }
 
