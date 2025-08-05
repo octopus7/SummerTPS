@@ -32,7 +32,7 @@ private:
     class UAISenseConfig_Sight* SightConfig;
 
     UFUNCTION()
-    void OnTargetReceived(AActor* Actor, FAIStimulus Stimulus);
+    void OnTargetPerceived(AActor* Actor, FAIStimulus Stimulus);
 
     bool bIsPlayerDetected;
 };

@@ -9,8 +9,6 @@
 
 class UHealthComponent;
 class AWeapon;
-class UBehaviorTree; 
-class UBlackboardData; 
 
 UCLASS(Blueprintable)
 class SUMMERTPS_API AEnemyCharacter : public ACharacter

@@ -31,19 +31,16 @@ void AEnemyAIController::OnPossess(APawn* InPawn)
     Super::OnPossess(InPawn);
 
     // Start Behavior Tree and bind perception update
-    if (BehaviorTree && BlackboardData)
+    if (BehaviorTree)
     {
-        UBlackboardComponent* BBComp = GetBlackboardComponent();
-        if (BBComp)
-        {
-            BBComp->InitializeBlackboard(*BlackboardData);
-        }
+        UBlackboardComponent* BBComp;
+        UseBlackboard(BehaviorTree->BlackboardAsset, BBComp);
         RunBehaviorTree(BehaviorTree);
     }
 
     if (AIPerceptionComponent)
     {
-        AIPerceptionComponent->OnTargetPerceptionUpdated.AddDynamic(this, &AEnemyAIController::OnTargetReceived);
+        AIPerceptionComponent->OnTargetPerceptionUpdated.AddDynamic(this, &AEnemyAIController::OnTargetPerceived);
     }
 }
 
@@ -65,9 +62,11 @@ void AEnemyAIController::Tick(float DeltaTime)
     }
 }
 
-void AEnemyAIController::OnTargetReceived(AActor* Actor, FAIStimulus Stimulus)
+void AEnemyAIController::OnTargetPerceived(AActor* Actor, FAIStimulus Stimulus)
 {
     FVector TextLocation = GetPawn()->GetActorLocation() + FVector(0, 0, 100.f);
+
+    bIsPlayerDetected = true;
 
     // A much simpler and more reliable way to check if the perceived actor is the player.
     APawn* TargetPawn = Cast<APawn>(Actor);
