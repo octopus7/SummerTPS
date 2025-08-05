@@ -18,8 +18,8 @@ AEnemyAIController::AEnemyAIController()
         SightConfig->PeripheralVisionAngleDegrees = 120.0f; // Standard forward vision
         SightConfig->SetMaxAge(5.0f);
         SightConfig->DetectionByAffiliation.bDetectEnemies = true;
-        SightConfig->DetectionByAffiliation.bDetectNeutrals = false; // Usually false for enemies
-        SightConfig->DetectionByAffiliation.bDetectFriendlies = false; // Usually false for enemies
+        SightConfig->DetectionByAffiliation.bDetectNeutrals = true; // Usually false for enemies
+        SightConfig->DetectionByAffiliation.bDetectFriendlies = true; // Usually false for enemies
 
         AIPerceptionComponent->ConfigureSense(*SightConfig);
         AIPerceptionComponent->SetDominantSense(SightConfig->GetSenseImplementation());
