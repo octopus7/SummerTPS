@@ -17,22 +17,6 @@ AEnemyCharacter::AEnemyCharacter()
 
     HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 
-    AIPerceptionComponent = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AIPerceptionComponent"));
-
-    // Configure Sight Sense
-    UAISenseConfig_Sight* SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
-    SightConfig->SightRadius = SightRadius;
-    SightConfig->LoseSightRadius = LoseSightRadius;
-    SightConfig->PeripheralVisionAngleDegrees = PeripheralVisionAngleDegrees;
-    SightConfig->DetectionByAffiliation.bDetectEnemies = true;
-    SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
-    SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
-
-    AIPerceptionComponent->ConfigureSense(*SightConfig);
-
-    AIPerceptionComponent->SetDominantSense(SightConfig->GetSenseImplementation());
-    AIPerceptionComponent->OnTargetPerceptionUpdated.AddDynamic(this, &AEnemyCharacter::OnTargetPerceptionUpdated);
-
     bIsDead = false;
 }
 
@@ -54,57 +38,9 @@ void AEnemyCharacter::BeginPlay()
             CurrentWeapon->SetOwner(this);
         }
     }
-
-    // Set AI Controller's Behavior Tree and Blackboard Data
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon)
-    {
-        if (BehaviorTree && BlackboardData)
-        {
-            AICon->BehaviorTree = BehaviorTree;
-            AICon->BlackboardData = BlackboardData;
-            AICon->RunBehaviorTree(BehaviorTree);
-        }
-    }
 }
 
-void AEnemyCharacter::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
-{
-    UE_LOG(LogTemp, Warning, TEXT("Perception Update Function Called!"));
 
-    DrawDebugString(GetWorld(), GetActorLocation(), TEXT("Perception"), nullptr, FColor::Yellow, 0.f, true);
-
-    GEngine->AddOnScreenDebugMessage(-1, 0.1f, FColor::Cyan, TEXT("OnPerceptionUpdated Called"));
-
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon)
-    {
-        if (AICon->GetBlackboardComponent())
-        {
-            if (Stimulus.WasSuccessfullySensed())
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, FString::Printf(TEXT("Target Sensed: %s"), *Actor->GetName()));
-                AICon->GetBlackboardComponent()->SetValueAsObject(TEXT("TargetActor"), Actor);
-                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100), TEXT("Player Detected"), nullptr, FColor::Green, 2.f, true);
-            }
-            else
-            {
-                GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Red, TEXT("Target Lost"));
-                AICon->GetBlackboardComponent()->ClearValue(TEXT("TargetActor"));
-                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100), TEXT("Player Lost"), nullptr, FColor::Red, 2.f, true);
-
-            }
-        }
-        else
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Blackboard Component is NOT valid."));
-        }
-    }
-    else
-    {
-        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("AI Controller is NOT valid."));
-    }
-}
 
 void AEnemyCharacter::OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser)
 {

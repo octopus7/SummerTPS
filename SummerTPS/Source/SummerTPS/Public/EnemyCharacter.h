@@ -12,7 +12,7 @@ class AWeapon;
 class UBehaviorTree; 
 class UBlackboardData; 
 
-UCLASS(Blueprintable, meta = (AIControllerClass = "AEnemyAIController")) 
+UCLASS(Blueprintable)
 class SUMMERTPS_API AEnemyCharacter : public ACharacter
 {
     GENERATED_BODY()
@@ -48,28 +48,5 @@ private:
 
     bool bIsDead;
 
-protected: 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
-    UAIPerceptionComponent* AIPerceptionComponent;
 
-    UPROPERTY(EditDefaultsOnly, Category = "AI")
-    UBehaviorTree* BehaviorTree;
-
-    UPROPERTY(EditDefaultsOnly, Category = "AI")
-    UBlackboardData* BlackboardData;
-
-    UPROPERTY(EditDefaultsOnly, Category = "AI")
-    float SightRadius = 1000.0f;
-
-    UPROPERTY(EditDefaultsOnly, Category = "AI")
-    float LoseSightRadius = 1500.0f;
-
-    UPROPERTY(EditDefaultsOnly, Category = "AI")
-    float PeripheralVisionAngleDegrees = 90.0f;
-
-    UPROPERTY(EditDefaultsOnly, Category = "AI")
-    float SightDetectionByAffiliation = 0.0f;
-
-    UFUNCTION()
-    void OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
 };
