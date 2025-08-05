@@ -97,7 +97,7 @@ ATPSPlayer::ATPSPlayer()
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 
 	StimuliSourceComponent = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSourceComponent"));
-        StimuliSourceComponent->bAutoRegister = true;
+    StimuliSourceComponent->bAutoRegister = true;
     StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
 }
 

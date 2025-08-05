@@ -25,13 +25,13 @@ AEnemyCharacter::AEnemyCharacter()
     SightConfig->LoseSightRadius = LoseSightRadius;
     SightConfig->PeripheralVisionAngleDegrees = PeripheralVisionAngleDegrees;
     SightConfig->DetectionByAffiliation.bDetectEnemies = true;
-    SightConfig->DetectionByAffiliation.bDetectFriendlies = false;
-    SightConfig->DetectionByAffiliation.bDetectNeutrals = false;
+    SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
+    SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
 
     AIPerceptionComponent->ConfigureSense(*SightConfig);
 
     AIPerceptionComponent->SetDominantSense(SightConfig->GetSenseImplementation());
-    AIPerceptionComponent->OnTargetPerceptionUpdated.AddDynamic(this, &AEnemyCharacter::OnPerceptionUpdated);
+    AIPerceptionComponent->OnTargetPerceptionUpdated.AddDynamic(this, &AEnemyCharacter::OnTargetPerceptionUpdated);
 
     bIsDead = false;
 }
@@ -68,8 +68,12 @@ void AEnemyCharacter::BeginPlay()
     }
 }
 
-void AEnemyCharacter::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
+void AEnemyCharacter::OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
+    UE_LOG(LogTemp, Warning, TEXT("Perception Update Function Called!"));
+
+    DrawDebugString(GetWorld(), GetActorLocation(), TEXT("Perception"), nullptr, FColor::Yellow, 0.f, true);
+
     GEngine->AddOnScreenDebugMessage(-1, 0.1f, FColor::Cyan, TEXT("OnPerceptionUpdated Called"));
 
     AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
@@ -81,11 +85,14 @@ void AEnemyCharacter::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
             {
                 GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green, FString::Printf(TEXT("Target Sensed: %s"), *Actor->GetName()));
                 AICon->GetBlackboardComponent()->SetValueAsObject(TEXT("TargetActor"), Actor);
+                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100), TEXT("Player Detected"), nullptr, FColor::Green, 2.f, true);
             }
             else
             {
                 GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Red, TEXT("Target Lost"));
                 AICon->GetBlackboardComponent()->ClearValue(TEXT("TargetActor"));
+                DrawDebugString(GetWorld(), GetActorLocation() + FVector(0, 0, 100), TEXT("Player Lost"), nullptr, FColor::Red, 2.f, true);
+
             }
         }
         else

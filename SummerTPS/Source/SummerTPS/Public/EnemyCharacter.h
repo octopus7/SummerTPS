@@ -71,5 +71,5 @@ protected:
     float SightDetectionByAffiliation = 0.0f;
 
     UFUNCTION()
-    void OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
+    void OnTargetPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus);
 };
