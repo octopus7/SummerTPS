@@ -22,6 +22,8 @@ public:
 protected:
     virtual void OnPossess(APawn* InPawn) override;
 
+    virtual void Tick(float DeltaTime) override;
+
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI", meta = (AllowPrivateAccess = "true"))
     class UAIPerceptionComponent* AIPerceptionComponent;
@@ -30,5 +32,7 @@ private:
     class UAISenseConfig_Sight* SightConfig;
 
     UFUNCTION()
-    void OnTargetPerceived(AActor* Actor, FAIStimulus Stimulus);
+    void OnTargetReceived(AActor* Actor, FAIStimulus Stimulus);
+
+    bool bIsPlayerDetected;
 };
