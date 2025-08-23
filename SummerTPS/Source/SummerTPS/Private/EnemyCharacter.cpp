@@ -1,120 +1,251 @@
 #include "EnemyCharacter.h"
-#include "HealthComponent.h"
-#include "Weapon.h"
+
 #include "Components/CapsuleComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "Components/TextRenderComponent.h"
+#include "Engine/Engine.h"
 #include "EnemyAIController.h"
-#include "BehaviorTree/BehaviorTree.h"
-#include "BehaviorTree/BlackboardComponent.h"
-#include "Perception/AIPerceptionStimuliSourceComponent.h"
-#include "Perception/AISenseConfig_Sight.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 AEnemyCharacter::AEnemyCharacter()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+    // Ensure enemy capsule can overlap with projectile (WorldDynamic)
+    GetCapsuleComponent()->SetGenerateOverlapEvents(true);
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 
-    AIPerceptionComponent = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AIPerceptionComponent"));
+    // HP text above head
+    HPText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("HPText"));
+    HPText->SetupAttachment(GetCapsuleComponent());
+    HPText->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
+    HPText->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
+    HPText->SetWorldSize(108.f);
+    HPText->SetTextRenderColor(FColor::White);
+    HPText->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
+    UpdateHPText();
 
-    // Configure Sight Sense
-    UAISenseConfig_Sight* SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
-    AIPerceptionComponent->ConfigureSense(*SightConfig);
-    SightConfig->SightRadius = SightRadius;
-    SightConfig->LoseSightRadius = LoseSightRadius;
-    SightConfig->PeripheralVisionAngleDegrees = PeripheralVisionAngleDegrees;
-    SightConfig->DetectionByAffiliation.bDetectEnemies = true;
-    SightConfig->DetectionByAffiliation.bDetectFriendlies = false;
-    SightConfig->DetectionByAffiliation.bDetectNeutrals = false;
+    // Lifetime text above HP (50% size)
+    LifeText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("LifeText"));
+    LifeText->SetupAttachment(GetCapsuleComponent());
+    LifeText->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
+    LifeText->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
+    LifeText->SetWorldSize(54.f);
+    LifeText->SetTextRenderColor(FColor::Cyan);
+    LifeText->SetRelativeLocation(FVector(0.f, 0.f, 190.f));
+    LifeText->SetHiddenInGame(true); // will unhide if AutoDeathTime > 0 in BeginPlay
 
-    AIPerceptionComponent->SetDominantSense(SightConfig->GetSenseImplementation());
-    AIPerceptionComponent->OnTargetPerceptionUpdated.AddDynamic(this, &AEnemyCharacter::OnPerceptionUpdated);
+    // AI setup
+    AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+    AIControllerClass = AEnemyAIController::StaticClass();
 
-    bIsDead = false;
+    // Movement setup
+    bUseControllerRotationYaw = false;
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->bOrientRotationToMovement = true;
+        MoveComp->RotationRate = FRotator(0.f, 540.f, 0.f);
+        MoveComp->bConstrainToPlane = false;
+        //MoveComp->SetPlaneConstraintNormal(FVector::UpVector);
+    }
 }
 
 void AEnemyCharacter::BeginPlay()
 {
     Super::BeginPlay();
 
-    if (HealthComponent)
+    // 스폰 후 자동 사망 시간 적용 (0이면 비활성)
+    if (AutoDeathTime > 0.f)
     {
-        HealthComponent->OnHealthChanged.AddDynamic(this, &AEnemyCharacter::OnHealthChanged);
-    }
-
-    if (DefaultWeaponClass)
-    {
-        CurrentWeapon = GetWorld()->SpawnActor<AWeapon>(DefaultWeaponClass);
-        if (CurrentWeapon)
+        SetLifeSpan(AutoDeathTime);
+        if (LifeText)
         {
-            CurrentWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::KeepRelativeTransform, TEXT("WeaponSocket")); // Assuming a "WeaponSocket" exists on the skeleton
-            CurrentWeapon->SetOwner(this);
+            LifeText->SetHiddenInGame(false);
+            UpdateLifetimeText();
         }
     }
-
-    // Set AI Controller's Behavior Tree and Blackboard Data
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon)
+    else
     {
-        if (BehaviorTree && BlackboardData)
+        SetLifeSpan(0.f);
+        if (LifeText)
         {
-            AICon->BehaviorTree = BehaviorTree;
-            AICon->BlackboardData = BlackboardData;
-            AICon->RunBehaviorTree(BehaviorTree);
+            LifeText->SetHiddenInGame(true);
         }
     }
 }
 
-void AEnemyCharacter::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
+void AEnemyCharacter::PossessedBy(AController* NewController)
 {
-    AEnemyAIController* AICon = Cast<AEnemyAIController>(GetController());
-    if (AICon && AICon->GetBlackboardComponent())
+    Super::PossessedBy(NewController);
+    CachedAIController = Cast<AEnemyAIController>(NewController);
+    UpdateLifetimeText();
+}
+
+void AEnemyCharacter::UnPossessed()
+{
+    Super::UnPossessed();
+    CachedAIController = nullptr;
+    UpdateLifetimeText();
+}
+
+float AEnemyCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+    const float SuperDealt = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+    CurrentHits++;
+    if (GEngine)
     {
-        if (Stimulus.WasSuccessfullySensed())
+        FString Msg = FString::Printf(TEXT("Enemy hit: %d / %d"), CurrentHits, HitsToDie);
+        GEngine->AddOnScreenDebugMessage(reinterpret_cast<uint64>(this), 1.0f, FColor::Red, Msg);
+    }
+
+    if (CurrentHits >= HitsToDie)
+    {
+        HandleDeath();
+    }
+    else
+    {
+        UpdateHPText();
+    }
+
+    return SuperDealt + DamageAmount;
+}
+
+void AEnemyCharacter::HandleDeath()
+{
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Red, TEXT("Enemy died (ragdoll)"));
+    }
+
+    // AEnemyCharacterOld::OnDeath_Implementation 랙돌 처리와 유사하게 적용
+    if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+    {
+        MoveComp->StopMovementImmediately();
+    }
+
+    if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
+    if (USkeletalMeshComponent* Skel = GetMesh())
+    {
+        // 스켈레탈 메시 랙돌 처리
+        Skel->SetSimulatePhysics(true);
+        Skel->SetCollisionProfileName(TEXT("Ragdoll"));
+    }
+
+    // 잠시 후 제거
+    SetLifeSpan(5.0f);
+}
+
+void AEnemyCharacter::UpdateHPText()
+{
+    if (!HPText)
+    {
+        return;
+    }
+    const int32 Remaining = FMath::Max(0, HitsToDie - CurrentHits);
+
+    // State text (English). If AI is null, show "null"
+    FString StateStr;
+    AEnemyAIController* AI = CachedAIController ? CachedAIController : Cast<AEnemyAIController>(GetController());
+    if (AI)
+    {
+        switch (AI->GetState())
         {
-            AICon->GetBlackboardComponent()->SetValueAsObject(TEXT("TargetActor"), Actor);
+        case EEnemyState::Idle:   StateStr = TEXT("Idle");   break;
+        case EEnemyState::Patrol: StateStr = TEXT("Patrol"); break;
+        case EEnemyState::Chase:  StateStr = TEXT("Chase");  break;
+        default:                  StateStr = TEXT("Idle");   break;
         }
-        else
+    }
+    else
+    {
+        StateStr = TEXT("null");
+    }
+
+    // Append extra info when Idle/Chase
+    FString Extra;
+    if (AI)
+    {
+        if (AI->GetState() == EEnemyState::Idle)
         {
-            AICon->GetBlackboardComponent()->ClearValue(TEXT("TargetActor"));
+            const float LeftIdle = AI->GetIdleTimeRemaining();
+            if (LeftIdle > 0.f)
+            {
+                Extra = FString::Printf(TEXT(" (%.1fs)"), LeftIdle);
+            }
+        }
+        else if (AI->GetState() == EEnemyState::Chase)
+        {
+            const float Rem = AI->GetAttackTimeRemaining();
+            Extra = FString::Printf(TEXT(" (%.1fs)"), Rem);
         }
     }
-}
+    const FString Txt = FString::Printf(TEXT("%d | %s%s"), Remaining, *StateStr, *Extra);
+    HPText->SetText(FText::FromString(Txt));
 
-void AEnemyCharacter::OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser)
-{
-    if (Health <= 0.0f && !bIsDead)
+    if (Remaining <= 1)
     {
-        bIsDead = true;
-        OnDeath();
+        HPText->SetTextRenderColor(FColor::Red);
+    }
+    else if (Remaining == 2)
+    {
+        HPText->SetTextRenderColor(FColor::Yellow);
+    }
+    else
+    {
+        HPText->SetTextRenderColor(FColor::White);
     }
 }
 
-
-
-void AEnemyCharacter::OnDeath_Implementation()
+void AEnemyCharacter::UpdateLifetimeText()
 {
-    // Stop AI logic here
-    GetCharacterMovement()->StopMovementImmediately();
-    GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-    // Ragdoll or play death animation
-    GetMesh()->SetSimulatePhysics(true);
-    GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
-
-    SetLifeSpan(5.0f); // Actor will be destroyed after 5 seconds
-}
-
-
-void AEnemyCharacter::Tick(float DeltaTime)
-{
-    Super::Tick(DeltaTime);
-}
-
-void AEnemyCharacter::Attack()
-{
-    if (CurrentWeapon && !bIsDead)
+    if (!LifeText)
     {
-        CurrentWeapon->Fire();
+        return;
     }
+    const float Left = GetLifeSpan();
+    if (Left <= 0.f)
+    {
+        LifeText->SetHiddenInGame(true);
+        return;
+    }
+    LifeText->SetHiddenInGame(false);
+    const int32 Secs = FMath::Max(0, FMath::CeilToInt(Left));
+    LifeText->SetText(FText::AsNumber(Secs));
+}
+
+void AEnemyCharacter::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (AutoDeathTime > 0.f)
+    {
+        UpdateLifetimeText();
+    }
+    // 상태는 HP 텍스트에 표시되므로 매 틱 갱신
+    UpdateHPText();
+
+    // 머리 위 텍스트를 카메라 방향으로 정렬
+    if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+    {
+        if (PC->PlayerCameraManager)
+        {
+            const FRotator CamRot = PC->PlayerCameraManager->GetCameraRotation();
+            // 텍스트가 카메라를 바라보도록 Yaw만 맞춤(+180도로 반전)
+            const FRotator FaceRot(0.f, CamRot.Yaw + 180.f, 0.f);
+            if (HPText)
+            {
+                HPText->SetWorldRotation(FaceRot);
+            }
+            if (LifeText && !LifeText->bHiddenInGame)
+            {
+                LifeText->SetWorldRotation(FaceRot);
+            }
+        }
+    }
+
+    // (제거됨) 플레이어까지 핑크 디버그 라인 표시 코드
 }
