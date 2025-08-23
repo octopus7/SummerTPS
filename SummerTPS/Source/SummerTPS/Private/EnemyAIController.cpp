@@ -253,7 +253,8 @@ void AEnemyAIController::StartChase()
     }
 
     State = EEnemyState::Chase;
-    MoveToActor(Player, /*AcceptanceRadius*/ GetEffectiveAttackRange() * 0.8f, true);
+    // 공격 가능 거리와 무관하게 근접할 때까지 추격
+    MoveToActor(Player, /*AcceptanceRadius*/ ApproachAcceptanceRadius, /*bStopOnOverlap*/ true);
 
     if (IsPlayerInAttackRange())
     {

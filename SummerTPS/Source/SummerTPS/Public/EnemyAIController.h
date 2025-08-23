@@ -66,6 +66,10 @@ protected:
     UPROPERTY(EditAnywhere, Category="Combat")
     float ProjectileSpawnOffset = 60.f;
 
+    // 플레이어를 따라붙을 때 도달로 간주할 거리(가까울수록 끝까지 추격)
+    UPROPERTY(EditAnywhere, Category="Chase")
+    float ApproachAcceptanceRadius = 75.f;
+
     UPROPERTY(EditDefaultsOnly, Category="Combat")
     TSubclassOf<AWaveProjectile> AttackProjectileClass;
 
