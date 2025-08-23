@@ -36,7 +36,7 @@ protected:
 
     // 자동 사망 시간(초). 0이면 자동 사망하지 않음. 기본 10초.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Lifetime", meta=(ClampMin="0.0"))
-    float AutoDeathTime = 10.0f;
+    float AutoDeathTime = 0.0f;
 
     void HandleDeath();
     void UpdateHPText();
