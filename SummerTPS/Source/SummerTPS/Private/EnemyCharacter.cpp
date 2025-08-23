@@ -118,7 +118,7 @@ void AEnemyCharacter::HandleDeath()
         GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Red, TEXT("Enemy died (ragdoll)"));
     }
 
-    // AEnemyCharacterOld::OnDeath_Implementation 랙돌 처리와 유사하게 적용
+    // 기존 랙돌 처리와 유사하게 적용
     if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
     {
         MoveComp->StopMovementImmediately();
