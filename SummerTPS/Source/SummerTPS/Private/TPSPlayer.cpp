@@ -561,4 +561,4 @@ void ATPSPlayer::OnDeath()
 	GetCharacterMovement()->DisableMovement();
 
 	UE_LOG(LogTemp, Warning, TEXT("Player has died!"));
-}
+}
