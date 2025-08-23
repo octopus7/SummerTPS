@@ -99,6 +99,24 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Debug")
     UTextRenderComponent* Label;
 
+    // 가독성을 위한 그림자 텍스트(선택)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Debug")
+    UTextRenderComponent* LabelShadow;
+
+    // 라벨 색상/그림자 설정 (에디터에서 조정 가능)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debug|Label")
+    FColor LabelColor = FColor::Yellow;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debug|Label")
+    bool bUseShadowLabel = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debug|Label")
+    FColor ShadowColor = FColor::Black;
+
+    // 라벨 대비를 위한 그림자 위치 오프셋
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debug|Label")
+    FVector ShadowOffset = FVector(1.5f, 1.5f, -1.5f);
+
     // 진행 상태
     UPROPERTY(VisibleInstanceOnly, Category="State")
     int32 CurrentPhaseIndex = INDEX_NONE;

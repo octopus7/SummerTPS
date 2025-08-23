@@ -17,10 +17,20 @@ APhasedSpawner::APhasedSpawner()
     Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
     Label->SetupAttachment(Arrow);
     Label->SetText(FText::FromString(TEXT("Phased Spawner")));
-    Label->SetTextRenderColor(FColor::Cyan);
+    // 에디터에서 지정 가능한 라벨 색상 사용
+    Label->SetTextRenderColor(LabelColor);
     Label->SetHorizontalAlignment(EHTA_Center);
     Label->SetWorldSize(48.f);
     Label->SetRelativeLocation(FVector(0.f, 0.f, 60.f));
+
+    // 가독성을 위한 그림자 텍스트 컴포넌트
+    LabelShadow = CreateDefaultSubobject<UTextRenderComponent>(TEXT("LabelShadow"));
+    LabelShadow->SetupAttachment(Arrow);
+    LabelShadow->SetText(FText::FromString(TEXT("Phased Spawner")));
+    LabelShadow->SetTextRenderColor(ShadowColor);
+    LabelShadow->SetHorizontalAlignment(EHTA_Center);
+    LabelShadow->SetWorldSize(Label->WorldSize * 1.05f);
+    LabelShadow->SetRelativeLocation(Label->GetRelativeLocation() + ShadowOffset);
 }
 
 void APhasedSpawner::BeginPlay()
@@ -31,6 +41,12 @@ void APhasedSpawner::BeginPlay()
     if (Label)
     {
         Label->SetWorldSize(Label->WorldSize * 2.0f);
+    }
+    if (LabelShadow)
+    {
+        // 그림자는 라벨 대비 5% 크게 유지
+        LabelShadow->SetWorldSize(Label->WorldSize * 1.05f);
+        LabelShadow->SetRelativeLocation(Label->GetRelativeLocation() + ShadowOffset);
     }
 
     if (bAutoStart)
@@ -46,6 +62,14 @@ void APhasedSpawner::OnConstruction(const FTransform& Transform)
     if (Label)
     {
         Label->SetHiddenInGame(!bShowLabelInGame);
+        Label->SetTextRenderColor(LabelColor);
+    }
+    if (LabelShadow)
+    {
+        LabelShadow->SetHiddenInGame(!bShowLabelInGame || !bUseShadowLabel);
+        LabelShadow->SetTextRenderColor(ShadowColor);
+        LabelShadow->SetWorldSize(Label->WorldSize * 1.05f);
+        LabelShadow->SetRelativeLocation(Label->GetRelativeLocation() + ShadowOffset);
     }
 
     if (bDrawDebug)
@@ -306,10 +330,20 @@ void APhasedSpawner::UpdateLabelText()
 
     if (CurrentPhaseIndex == INDEX_NONE)
     {
-        Label->SetText(FText::FromString(TEXT("Phased Spawner (Idle/Completed)")));
+        const FText IdleTxt = FText::FromString(TEXT("Phased Spawner (Idle/Completed)"));
+        Label->SetText(IdleTxt);
+        if (LabelShadow)
+        {
+            LabelShadow->SetText(IdleTxt);
+        }
         return;
     }
     const int32 TotalPhases = Phases.Num();
     const FString Txt = FString::Printf(TEXT("Phase %d/%d | Alive %d"), CurrentPhaseIndex + 1, TotalPhases, AliveThisPhase);
-    Label->SetText(FText::FromString(Txt));
+    const FText TxtText = FText::FromString(Txt);
+    Label->SetText(TxtText);
+    if (LabelShadow)
+    {
+        LabelShadow->SetText(TxtText);
+    }
 }
