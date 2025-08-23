@@ -4,6 +4,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Engine/Engine.h"
 #include "EnemyAIController.h"
+#include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -134,6 +135,13 @@ void AEnemyCharacter::HandleDeath()
         // 스켈레탈 메시 랙돌 처리
         Skel->SetSimulatePhysics(true);
         Skel->SetCollisionProfileName(TEXT("Ragdoll"));
+    }
+
+    // 컨트롤러 무력화 및 분리
+    if (AAIController* AI = Cast<AAIController>(GetController()))
+    {
+        AI->StopMovement();
+        AI->UnPossess();
     }
 
     // 잠시 후 제거

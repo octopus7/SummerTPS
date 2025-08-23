@@ -24,6 +24,7 @@ public:
     AEnemyAIController();
 
     virtual void OnPossess(APawn* InPawn) override;
+    virtual void OnUnPossess() override;
     virtual void OnMoveCompleted(FAIRequestID RequestID, const FPathFollowingResult& Result) override;
 
     EEnemyState GetState() const { return State; }

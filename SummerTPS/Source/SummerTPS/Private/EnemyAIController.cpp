@@ -8,6 +8,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "DrawDebugHelpers.h"
 #include "WaveProjectile.h"
+#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
 
 AEnemyAIController::AEnemyAIController()
 {
@@ -31,6 +33,15 @@ void AEnemyAIController::OnPossess(APawn* InPawn)
     State = EEnemyState::Chase;
     StartChase();
     GetWorldTimerManager().SetTimer(ThinkTimerHandle, this, &AEnemyAIController::Think, ThinkInterval, true, ThinkInterval);
+}
+
+void AEnemyAIController::OnUnPossess()
+{
+    Super::OnUnPossess();
+    // Stop all behavior when pawn is gone (e.g., death)
+    GetWorldTimerManager().ClearTimer(ThinkTimerHandle);
+    GetWorldTimerManager().ClearTimer(IdleTimerHandle);
+    CachedEnemy = nullptr;
 }
 
 bool AEnemyAIController::CanSeePlayer(bool bStrict) const
@@ -262,6 +273,19 @@ void AEnemyAIController::TryAttack()
     {
         LastAttackFailReason = TEXT("No pawn/player");
         return;
+    }
+
+    // Dead/ragdoll gate
+    if (ACharacter* SelfChar = Cast<ACharacter>(SelfPawn))
+    {
+        if (USkeletalMeshComponent* Skel = SelfChar->GetMesh())
+        {
+            if (Skel->IsSimulatingPhysics())
+            {
+                LastAttackFailReason = TEXT("Dead");
+                return;
+            }
+        }
     }
 
     // Cooldown gate
