@@ -8,11 +8,23 @@ class UHealthComponent;
 class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
+class UAnimMontage;
+class UUserWidget;
+
+UENUM(BlueprintType)
+enum class ECombatState : uint8
+{
+    Unarmed         UMETA(DisplayName = "Unarmed"),
+    Armed           UMETA(DisplayName = "Armed"),
+    ThrownReady     UMETA(DisplayName = "ThrownReady"),
+    Equipping       UMETA(DisplayName = "Equipping"),
+    Unequipping     UMETA(DisplayName = "Unequipping")
+};
 
 UCLASS()
 class SUMMERTPS_API ATPSPlayer : public ACharacter
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
 	// Sets default values for this character's properties
@@ -23,11 +35,11 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
+    // Called every frame
+    virtual void Tick(float DeltaTime) override;
 
 	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 protected:
 	/** Camera boom positioning the camera behind the character */
@@ -98,9 +110,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* CoverAction;
 
-	/** Sprint Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* SprintAction;
+    /** Sprint Input Action */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* SprintAction;
+
+    /** Arm/Unarm Toggle Input Action (IA_Arm) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* ArmAction;
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
@@ -168,16 +184,20 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
 	TSubclassOf<AActor> WeaponBlueprint;
 
-	/** Socket name on the mesh to attach the weapon to */
-	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
-	FName WeaponSocketName;
+    /** Socket name on the mesh to attach the weapon to */
+    UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+    FName WeaponSocketName;
 
-	/** A reference to the spawned weapon */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
-	AActor* SpawnedWeapon;
+    /** Socket name for storing weapon on back when unarmed */
+    UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+    FName UnarmedBackSocketName;
+
+    /** A reference to the spawned weapon */
+    UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+    AActor* SpawnedWeapon;
 
 UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-	UHealthComponent* HealthComponent;
+    UHealthComponent* HealthComponent;
 
 protected:
 	/************************************************************************
@@ -242,8 +262,8 @@ protected:
 	FVector ExitCoverTargetLocation;
 
 private:
-	/** Timer handle for automatic firing */
-	FTimerHandle TimerHandle_AutomaticFire;
+    /** Timer handle for automatic firing */
+    FTimerHandle TimerHandle_AutomaticFire;
 
 	/** Flag to track if the dedicated aim button is pressed */
 	bool bIsAiming;
@@ -251,15 +271,74 @@ private:
 	/** Flag to track if the player is sprinting */
 	bool bIsSprinting;
 
-	/** Updates the character's rotation settings based on aiming and firing states */
-	void UpdateRotationSettings();
+    /** Updates the character's rotation settings based on aiming and firing states */
+    void UpdateRotationSettings();
 
-	UFUNCTION()
-	void OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
+    UFUNCTION()
+    void OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
 
 private:
-	bool bIsDead;
+    bool bIsDead;
 
-	UFUNCTION()
-	void OnDeath();
+    UFUNCTION()
+    void OnDeath();
+
+public:
+    /************************************************************************
+    * Combat State (Armed/Unarmed/ThrownReady)
+    ************************************************************************/
+
+protected:
+    /** Current combat state */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
+    ECombatState CombatState;
+
+    /** Optional montages for equip/unequip transitions */
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+    UAnimMontage* EquipMontage;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+    UAnimMontage* UnequipMontage;
+
+    /** When to attach/detach relative to montage start if no anim notify */
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+    float EquipAttachDelay;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+    float UnequipAttachDelay;
+
+    /** Pending target state after unequip (e.g., ThrownReady) */
+    bool bHasPendingStateAfterUnequip;
+    ECombatState PendingStateAfterUnequip;
+
+    /** Timers for equip/unequip attach moments */
+    FTimerHandle TimerHandle_EquipAttach;
+    FTimerHandle TimerHandle_UnequipAttach;
+
+    /** Attach helper */
+    void AttachWeaponToSocket(const FName& SocketName);
+
+    /** Transition handlers */
+    void HandleEquipAttach();
+    void HandleUnequipAttach();
+
+    /** UI: simple widget hook */
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UUserWidget> CombatStateWidgetClass;
+
+    UPROPERTY()
+    UUserWidget* CombatStateWidgetInstance;
+
+    void UpdateCombatStateUI();
+
+public:
+    /** Requests a state switch with animations */
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void RequestSetCombatState(ECombatState NewState);
+
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void ToggleArmed();
+
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    void SetThrownReady();
 };

@@ -10,6 +10,11 @@
 #include "DrawDebugHelpers.h"
 #include "NiagaraFunctionLibrary.h"
 #include "HealthComponent.h"
+#include "Components/MeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "Blueprint/UserWidget.h"
+#include "CombatStateWidget.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
@@ -53,8 +58,9 @@ ATPSPlayer::ATPSPlayer()
 	DefaultWalkSpeed = 500.f;
 	SprintWalkSpeed = 800.f;
 
-	// Initialize weapon socket name
+	// Initialize weapon socket names
 	WeaponSocketName = FName("Weapon");
+	UnarmedBackSocketName = FName("UnarmedBack");
 
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
@@ -93,6 +99,14 @@ ATPSPlayer::ATPSPlayer()
 	ProjectileSpawnPoint->SetupAttachment(GetMesh()); // Attach to mesh, can be adjusted to a specific socket later
 
 	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
+
+	// Combat state defaults
+	CombatState = ECombatState::Armed;
+	EquipMontage = nullptr;
+	UnequipMontage = nullptr;
+	EquipAttachDelay = 0.2f;
+	UnequipAttachDelay = 0.2f;
+	bHasPendingStateAfterUnequip = false;
 }
 
 // Called when the game starts or when spawned
@@ -147,6 +161,19 @@ void ATPSPlayer::BeginPlay()
 	{
 		HealthComponent->OnHealthChanged.AddDynamic(this, &ATPSPlayer::OnHealthChanged);
 	}
+
+	// Create UI if class assigned, otherwise use default native widget
+	if (APlayerController* PC = Cast<APlayerController>(Controller))
+	{
+			TSubclassOf<UUserWidget> ClassToUse = CombatStateWidgetClass ? CombatStateWidgetClass : TSubclassOf<UUserWidget>(UCombatStateWidget::StaticClass());
+		CombatStateWidgetInstance = CreateWidget<UUserWidget>(PC, ClassToUse);
+		if (CombatStateWidgetInstance)
+		{
+			CombatStateWidgetInstance->AddToViewport();
+		}
+	}
+
+	UpdateCombatStateUI();
 }
 
 // Called every frame
@@ -228,11 +255,11 @@ void ATPSPlayer::Tick(float DeltaTime)
 	{
 		FVector MuzzleLocation;
 		FRotator MuzzleRotation;
-		if (USceneComponent* MuzzleSocket = SpawnedWeapon->FindComponentByClass<USceneComponent>())
-		{
-			MuzzleLocation = MuzzleSocket->GetSocketLocation(FName("Muzzle"));
-			MuzzleRotation = MuzzleSocket->GetSocketRotation(FName("Muzzle"));
-		}
+			if (UMeshComponent* MuzzleMesh = SpawnedWeapon->FindComponentByClass<UMeshComponent>())
+			{
+				MuzzleLocation = MuzzleMesh->GetSocketLocation(FName("Muzzle"));
+				MuzzleRotation = MuzzleMesh->GetSocketRotation(FName("Muzzle"));
+			}
 		else
 		{
 			MuzzleLocation = ProjectileSpawnPoint->GetComponentLocation();
@@ -284,6 +311,9 @@ void ATPSPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 		//Sprint
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ATPSPlayer::SprintStarted);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ATPSPlayer::SprintStopped);
+
+		// Arm/Unarm Toggle
+		EnhancedInputComponent->BindAction(ArmAction, ETriggerEvent::Started, this, &ATPSPlayer::ToggleArmed);
 	}
 }
 
@@ -305,7 +335,7 @@ void ATPSPlayer::Move(const FInputActionValue& Value)
 			FCollisionQueryParams QueryParams;
 			QueryParams.AddIgnoredActor(this);
 
-			if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, QueryParams))
+			if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_GameTraceChannel1, QueryParams))
 			{
 				// Only move if there is a wall to stay in cover
 				AddMovementInput(MoveDirection, 1.f);
@@ -357,6 +387,10 @@ void ATPSPlayer::AimStopped()
 
 void ATPSPlayer::StartFire()
 {
+	if (CombatState != ECombatState::Armed)
+	{
+		return;
+	}
 	UpdateRotationSettings();
 	Fire(); // Fire immediately on press
 	GetWorldTimerManager().SetTimer(TimerHandle_AutomaticFire, this, &ATPSPlayer::Fire, TimeBetweenShots, true);
@@ -387,7 +421,7 @@ void ATPSPlayer::UpdateRotationSettings()
 void ATPSPlayer::Fire()
 {
 	// Implement projectile firing logic here
-	if (ProjectileClass && SpawnedWeapon)
+	if (CombatState == ECombatState::Armed && ProjectileClass && SpawnedWeapon)
 	{
 		UWorld* World = GetWorld();
 		if (World)
@@ -399,10 +433,10 @@ void ATPSPlayer::Fire()
 			// Get the Muzzle socket transform from the spawned weapon
 			FVector SpawnLocation;
 			FRotator SpawnRotation;
-			if (USceneComponent* MuzzleSocket = SpawnedWeapon->FindComponentByClass<USceneComponent>())
+			if (UMeshComponent* MuzzleMesh = SpawnedWeapon->FindComponentByClass<UMeshComponent>())
 			{
-				SpawnLocation = MuzzleSocket->GetSocketLocation(FName("Muzzle"));
-				SpawnRotation = MuzzleSocket->GetSocketRotation(FName("Muzzle"));
+				SpawnLocation = MuzzleMesh->GetSocketLocation(FName("Muzzle"));
+				SpawnRotation = MuzzleMesh->GetSocketRotation(FName("Muzzle"));
 			}
 			else
 			{
@@ -472,9 +506,9 @@ void ATPSPlayer::TryEnterCover()
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(this);
 
-	// For now, we'll use the Visibility channel. We'll create a custom "Cover" channel later.
-	if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_Visibility, QueryParams))
-	{
+		// Use custom Cover trace channel (Configured in DefaultEngine.ini as GameTraceChannel1)
+		if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_GameTraceChannel1, QueryParams))
+		{
 		// If already exiting cover, stop it
 		if (bIsExitingCover)
 		{
@@ -561,4 +595,156 @@ void ATPSPlayer::OnDeath()
 	GetCharacterMovement()->DisableMovement();
 
 	UE_LOG(LogTemp, Warning, TEXT("Player has died!"));
-}
+}
+
+void ATPSPlayer::AttachWeaponToSocket(const FName& SocketName)
+{
+	if (!SpawnedWeapon || !GetMesh())
+	{
+		return;
+	}
+
+	FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
+	SpawnedWeapon->AttachToComponent(GetMesh(), AttachmentRules, SocketName);
+}
+
+void ATPSPlayer::HandleEquipAttach()
+{
+	AttachWeaponToSocket(WeaponSocketName);
+	CombatState = ECombatState::Armed;
+	UpdateCombatStateUI();
+}
+
+void ATPSPlayer::HandleUnequipAttach()
+{
+	AttachWeaponToSocket(UnarmedBackSocketName);
+	if (bHasPendingStateAfterUnequip)
+	{
+		CombatState = PendingStateAfterUnequip;
+		bHasPendingStateAfterUnequip = false;
+	}
+	else
+	{
+		CombatState = ECombatState::Unarmed;
+	}
+	UpdateCombatStateUI();
+}
+
+void ATPSPlayer::UpdateCombatStateUI()
+{
+	FString Label;
+	switch (CombatState)
+	{
+	case ECombatState::Armed: Label = TEXT("무장 (Armed)"); break;
+	case ECombatState::Unarmed: Label = TEXT("비무장 (Unarmed)"); break;
+	case ECombatState::ThrownReady: Label = TEXT("투척 준비 (Thrown)"); break;
+	case ECombatState::Equipping: Label = TEXT("무장 전환 중 (Equipping)"); break;
+	case ECombatState::Unequipping: Label = TEXT("비무장 전환 중 (Unequipping)"); break;
+	}
+
+	if (CombatStateWidgetInstance)
+	{
+		static const FName FuncName = FName("UpdateStateText");
+		if (CombatStateWidgetInstance->GetClass()->FindFunctionByName(FuncName))
+		{
+			struct FParams { FText InText; } Params{ FText::FromString(Label) };
+			CombatStateWidgetInstance->ProcessEvent(CombatStateWidgetInstance->FindFunction(FuncName), &Params);
+		}
+	}
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage((uint64)((PTRINT)this & 0xFFFF), 2.0f, FColor::Cyan, FString::Printf(TEXT("State: %s"), *Label));
+	}
+}
+
+void ATPSPlayer::RequestSetCombatState(ECombatState NewState)
+{
+	if (CombatState == ECombatState::Equipping || CombatState == ECombatState::Unequipping)
+	{
+		return;
+	}
+
+	switch (NewState)
+	{
+	case ECombatState::Armed:
+		if (CombatState == ECombatState::Armed)
+		{
+			return;
+		}
+		// From Unarmed/ThrownReady -> Equip
+		if (EquipMontage && GetMesh() && GetMesh()->GetAnimInstance())
+		{
+			GetMesh()->GetAnimInstance()->Montage_Play(EquipMontage);
+			CombatState = ECombatState::Equipping;
+			GetWorldTimerManager().SetTimer(TimerHandle_EquipAttach, this, &ATPSPlayer::HandleEquipAttach, EquipAttachDelay, false);
+			UpdateCombatStateUI();
+		}
+		else
+		{
+			HandleEquipAttach();
+		}
+		break;
+
+	case ECombatState::Unarmed:
+		if (CombatState == ECombatState::Unarmed)
+		{
+			return;
+		}
+		if (CombatState == ECombatState::Armed)
+		{
+			if (UnequipMontage && GetMesh() && GetMesh()->GetAnimInstance())
+			{
+				GetMesh()->GetAnimInstance()->Montage_Play(UnequipMontage);
+				CombatState = ECombatState::Unequipping;
+				GetWorldTimerManager().SetTimer(TimerHandle_UnequipAttach, this, &ATPSPlayer::HandleUnequipAttach, UnequipAttachDelay, false);
+				UpdateCombatStateUI();
+			}
+			else
+			{
+				HandleUnequipAttach();
+			}
+		}
+		else
+		{
+			// From ThrownReady -> Unarmed
+			CombatState = ECombatState::Unarmed;
+			UpdateCombatStateUI();
+		}
+		break;
+
+	case ECombatState::ThrownReady:
+		if (CombatState == ECombatState::Armed)
+		{
+			bHasPendingStateAfterUnequip = true;
+			PendingStateAfterUnequip = ECombatState::ThrownReady;
+			RequestSetCombatState(ECombatState::Unarmed);
+		}
+		else
+		{
+			CombatState = ECombatState::ThrownReady;
+			UpdateCombatStateUI();
+		}
+		break;
+
+	default:
+		break;
+	}
+}
+
+void ATPSPlayer::ToggleArmed()
+{
+	if (CombatState == ECombatState::Armed)
+	{
+		RequestSetCombatState(ECombatState::Unarmed);
+	}
+	else if (CombatState == ECombatState::Unarmed || CombatState == ECombatState::ThrownReady)
+	{
+		RequestSetCombatState(ECombatState::Armed);
+	}
+}
+
+void ATPSPlayer::SetThrownReady()
+{
+	RequestSetCombatState(ECombatState::ThrownReady);
+}
