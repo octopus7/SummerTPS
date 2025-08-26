@@ -257,7 +257,8 @@ void ATPSPlayer::Tick(float DeltaTime)
 		DrawDebugString(GetWorld(), FVector(0, 0, 100), "Not Covered", this, FColor::Red, 0.f);
 	}
 
-	if (ProjectileClass && SpawnedWeapon)
+	// Draw projectile path only when armed
+	if (ProjectileClass && SpawnedWeapon && CombatState == ECombatState::Armed)
 	{
 		FVector MuzzleLocation;
 		FRotator MuzzleRotation;
