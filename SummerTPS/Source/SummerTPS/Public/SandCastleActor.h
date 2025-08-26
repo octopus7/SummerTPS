@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/TextRenderComponent.h"
 #include "GameFramework/Actor.h"
 #include "SandCastleActor.generated.h"
 
@@ -27,6 +28,9 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void OnConstruction(const FTransform& Transform) override;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+    UTextRenderComponent* HPText;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     class UStaticMeshComponent* MeshComponent;
@@ -72,4 +76,5 @@ protected:
     void ApplyMeshForState(ESandCastleState NewState);
     void SpawnStageEffect();
     void SpawnDestroyEffect();
+    void UpdateHPText();
 };

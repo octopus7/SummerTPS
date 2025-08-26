@@ -12,17 +12,29 @@ ASandCastleActor::ASandCastleActor()
     SetRootComponent(MeshComponent);
     MeshComponent->SetCollisionProfileName(TEXT("BlockAllDynamic"));
 
-    MaxDurability = 300.f;
+    MaxDurability = 900.f;
     Durability = MaxDurability;
     MidDamagedThresholdRatio = 0.66f;
     NearDestroyedThresholdRatio = 0.33f;
     CurrentState = ESandCastleState::Intact;
     bDestroyed = false;
+
+    // HP text above head
+    HPText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("HPText"));
+    HPText->SetupAttachment(MeshComponent);
+    HPText->SetHorizontalAlignment(EHorizTextAligment::EHTA_Center);
+    HPText->SetVerticalAlignment(EVerticalTextAligment::EVRTA_TextCenter);
+    HPText->SetWorldSize(108.f);
+    HPText->SetTextRenderColor(FColor::White);
+    HPText->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
+    UpdateHPText();
 }
 
 void ASandCastleActor::BeginPlay()
 {
     Super::BeginPlay();
+
+    Durability = MaxDurability;
 
     Durability = FMath::Clamp(Durability, 0.f, MaxDurability);
     EvaluateAndApplyState(false);
@@ -45,6 +57,8 @@ void ASandCastleActor::HandleTakeAnyDamage(AActor* DamagedActor, float Damage, c
     }
 
     Durability = FMath::Clamp(Durability - Damage, 0.f, MaxDurability);
+
+    UpdateHPText();
 
     if (Durability <= 0.f)
     {
@@ -134,3 +148,12 @@ void ASandCastleActor::SpawnDestroyEffect()
     UNiagaraFunctionLibrary::SpawnSystemAtLocation(GetWorld(), DestroyEffect, GetActorLocation(), GetActorRotation());
 }
 
+void ASandCastleActor::UpdateHPText()
+{
+    if (!HPText)
+    {
+        return;
+    }
+    const FString Txt = FString::Printf(TEXT("%.0f / %.0f"), Durability, MaxDurability);
+    HPText->SetText(FText::FromString(Txt));
+}

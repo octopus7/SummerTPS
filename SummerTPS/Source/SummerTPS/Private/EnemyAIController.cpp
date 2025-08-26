@@ -343,6 +343,13 @@ void AEnemyAIController::TryAttack()
 
     if (World && AttackProjectileClass)
     {
+        // do not attack me
+        bool enableAttack = false;
+        if(!enableAttack)
+        {
+            return;
+        }
+
         if (AWaveProjectile* P = World->SpawnActor<AWaveProjectile>(AttackProjectileClass, SpawnLoc, SpawnRot, Params))
         {
             P->InitVelocity(Dir);
