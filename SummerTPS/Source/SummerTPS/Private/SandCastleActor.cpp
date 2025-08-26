@@ -3,6 +3,8 @@
 #include "NiagaraFunctionLibrary.h"
 #include "Components/WidgetComponent.h"
 #include "Blueprint/UserWidget.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 ASandCastleActor::ASandCastleActor()
 {
@@ -71,6 +73,9 @@ void ASandCastleActor::HandleTakeAnyDamage(AActor* DamagedActor, float Damage, c
 
     // Evaluate new state and apply mesh; spawn stage effect if state changed
     EvaluateAndApplyState(true);
+
+    // Play brief gold flash + shimmer feedback on damage
+    PlayHitFlash();
 }
 
 void ASandCastleActor::EvaluateAndApplyState(bool bSpawnStageEffect)
@@ -156,4 +161,129 @@ void ASandCastleActor::UpdateHPText()
     }
     const FString Txt = FString::Printf(TEXT("%.0f / %.0f"), Durability, MaxDurability);
     HPText->SetText(FText::FromString(Txt));
+}
+
+void ASandCastleActor::PlayHitFlash()
+{
+    if (!MeshComponent)
+    {
+        return;
+    }
+
+    // If a previous flash is running, end it first to restore materials cleanly
+    EndHitFlash();
+
+    bIsHitFlashing = true;
+    HitFlashElapsed = 0.f;
+
+    const int32 NumMats = MeshComponent->GetNumMaterials();
+    OriginalMaterials.Reset();
+    ActiveHitMIDs.Reset();
+
+    if (HitFlashMaterial)
+    {
+        // Override all slots with the provided flash material
+        OriginalMaterials.Reserve(NumMats);
+        for (int32 Index = 0; Index < NumMats; ++Index)
+        {
+            OriginalMaterials.Add(MeshComponent->GetMaterial(Index));
+            MeshComponent->SetMaterial(Index, HitFlashMaterial);
+        }
+    }
+    else
+    {
+        // Parameter-based flash on current materials
+        for (int32 Index = 0; Index < NumMats; ++Index)
+        {
+            UMaterialInstanceDynamic* MID = MeshComponent->CreateAndSetMaterialInstanceDynamic(Index);
+            if (MID)
+            {
+                ActiveHitMIDs.Add(MID);
+                MID->SetScalarParameterValue(ParamName_FlashIntensity, 1.0f);
+                MID->SetVectorParameterValue(ParamName_FlashColor, HitFlashColor);
+                MID->SetScalarParameterValue(ParamName_EmissiveBoost, HitFlashEmissive);
+                MID->SetScalarParameterValue(ParamName_HitTime, 0.0f);
+            }
+        }
+    }
+
+    // Schedule shimmer updates and the end of flash
+    if (UWorld* World = GetWorld())
+    {
+        // Shimmer tick ~60 FPS for the duration
+        World->GetTimerManager().SetTimer(
+            TimerHandle_TickHitFlash,
+            this,
+            &ASandCastleActor::TickHitFlash,
+            1.0f / 60.0f,
+            true
+        );
+
+        World->GetTimerManager().SetTimer(
+            TimerHandle_EndHitFlash,
+            this,
+            &ASandCastleActor::EndHitFlash,
+            HitFlashDuration,
+            false
+        );
+    }
+}
+
+void ASandCastleActor::TickHitFlash()
+{
+    if (!bIsHitFlashing)
+    {
+        return;
+    }
+
+    HitFlashElapsed += 1.0f / 60.0f;
+
+    // Ease-out the intensity over time
+    const float Alpha = FMath::Clamp(1.0f - (HitFlashElapsed / FMath::Max(0.001f, HitFlashDuration)), 0.0f, 1.0f);
+
+    // Update parameter-based MIDs
+    for (UMaterialInstanceDynamic* MID : ActiveHitMIDs)
+    {
+        if (!MID) continue;
+        MID->SetScalarParameterValue(ParamName_HitTime, HitFlashElapsed);
+        MID->SetScalarParameterValue(ParamName_FlashIntensity, Alpha);
+        MID->SetScalarParameterValue(ParamName_EmissiveBoost, HitFlashEmissive * Alpha);
+    }
+}
+
+void ASandCastleActor::EndHitFlash()
+{
+    if (!bIsHitFlashing)
+    {
+        return;
+    }
+
+    bIsHitFlashing = false;
+
+    // Stop timers
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(TimerHandle_TickHitFlash);
+        World->GetTimerManager().ClearTimer(TimerHandle_EndHitFlash);
+    }
+
+    // Restore original materials if we overrode them
+    if (OriginalMaterials.Num() > 0 && MeshComponent)
+    {
+        const int32 NumMats = MeshComponent->GetNumMaterials();
+        for (int32 Index = 0; Index < NumMats && Index < OriginalMaterials.Num(); ++Index)
+        {
+            MeshComponent->SetMaterial(Index, OriginalMaterials[Index]);
+        }
+        OriginalMaterials.Reset();
+    }
+
+    // Or, turn off the parameters on dynamic instances
+    for (UMaterialInstanceDynamic* MID : ActiveHitMIDs)
+    {
+        if (!MID) continue;
+        MID->SetScalarParameterValue(ParamName_FlashIntensity, 0.0f);
+        MID->SetScalarParameterValue(ParamName_EmissiveBoost, 0.0f);
+    }
+    ActiveHitMIDs.Reset();
 }

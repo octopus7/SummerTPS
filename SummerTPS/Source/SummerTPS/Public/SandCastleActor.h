@@ -77,4 +77,58 @@ protected:
     void SpawnStageEffect();
     void SpawnDestroyEffect();
     void UpdateHPText();
+
+    /************************************************************************
+    * Hit Flash (Gold shimmer on damage)
+    ************************************************************************/
+protected:
+    /** Optional override material used briefly when hit (gold + shimmer). If unset, tries parameter-based flash on current materials. */
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash")
+    class UMaterialInterface* HitFlashMaterial;
+
+    /** Duration of the flash/shimmer in seconds. */
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash", meta=(ClampMin="0.01", UIMin="0.05", UIMax="1.0"))
+    float HitFlashDuration = 1 / 30.f;
+
+    /** Gold tint color used when parameter-based flashing (if material supports). */
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash")
+    FLinearColor HitFlashColor = FLinearColor(1.0f, 0.85f, 0.2f, 1.0f);
+
+    /** Emissive boost while flashing (parameter-based). */
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash")
+    float HitFlashEmissive = 15.0f;
+
+    /** Parameter names expected on the base material (when not using HitFlashMaterial). */
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash")
+    FName ParamName_FlashIntensity = TEXT("HitFlash");
+
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash")
+    FName ParamName_FlashColor = TEXT("HitColor");
+
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash")
+    FName ParamName_EmissiveBoost = TEXT("EmissiveBoost");
+
+    UPROPERTY(EditDefaultsOnly, Category = "Destructible|FX|HitFlash")
+    FName ParamName_HitTime = TEXT("HitTime");
+
+private:
+    /** Original materials cache when overriding with HitFlashMaterial. */
+    UPROPERTY(Transient)
+    TArray<class UMaterialInterface*> OriginalMaterials;
+
+    /** Active MIDs when doing parameter-based flash. */
+    UPROPERTY(Transient)
+    TArray<class UMaterialInstanceDynamic*> ActiveHitMIDs;
+
+    /** Timers driving the flash. */
+    FTimerHandle TimerHandle_EndHitFlash;
+    FTimerHandle TimerHandle_TickHitFlash;
+
+    /** State for animated shimmer. */
+    float HitFlashElapsed = 0.f;
+    bool bIsHitFlashing = false;
+
+    void PlayHitFlash();
+    void EndHitFlash();
+    void TickHitFlash();
 };
