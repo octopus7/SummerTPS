@@ -15,6 +15,7 @@
 #include "Animation/AnimMontage.h"
 #include "Blueprint/UserWidget.h"
 #include "CombatStateWidget.h"
+#include "Components/PrimitiveComponent.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
@@ -107,6 +108,9 @@ ATPSPlayer::ATPSPlayer()
 	EquipAttachDelay = 0.2f;
 	UnequipAttachDelay = 0.2f;
 	bHasPendingStateAfterUnequip = false;
+
+	// Debug
+	bMovementDebugEnabled = true; // default on to investigate speed issue; toggle via console if noisy
 }
 
 // Called when the game starts or when spawned
@@ -142,6 +146,8 @@ void ATPSPlayer::BeginPlay()
 			{
 				FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
 				SpawnedWeapon->AttachToComponent(GetMesh(), AttachmentRules, WeaponSocketName);
+				// Ensure attached weapon doesn't block or overlap the character/world
+				ConfigureWeaponCollision();
 			}
 		}
 	}
@@ -179,7 +185,7 @@ void ATPSPlayer::BeginPlay()
 // Called every frame
 void ATPSPlayer::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+    Super::Tick(DeltaTime);
 
 	// --- Camera Interpolation ---
 	float TargetArmLength;
@@ -274,9 +280,50 @@ void ATPSPlayer::Tick(float DeltaTime)
 			for (int32 i = 0; i < PredictResult.PathData.Num() - 1; ++i)
 			{
 				DrawDebugLine(GetWorld(), PredictResult.PathData[i].Location, PredictResult.PathData[i+1].Location, FColor::Yellow, false, 0.f, 0, 0.5f);
-			}
-		}
-	}
+    			}
+    		}
+    	}
+
+    // Movement debug overlay (at end of Tick)
+    if (bMovementDebugEnabled && GEngine)
+    {
+        const float Speed = GetVelocity().Size();
+        const float MaxWalk = GetCharacterMovement() ? GetCharacterMovement()->MaxWalkSpeed : 0.f;
+        const float MaxMode = GetCharacterMovement() ? GetCharacterMovement()->GetMaxSpeed() : 0.f;
+        const FVector LastInput = GetLastMovementInputVector();
+        const float InputMag = LastInput.Size();
+        const float ArmLen = CameraBoom ? CameraBoom->TargetArmLength : 0.f;
+
+        const TCHAR* MoveModeStr = TEXT("None");
+        if (GetCharacterMovement())
+        {
+            switch (GetCharacterMovement()->MovementMode)
+            {
+            case MOVE_Walking:   MoveModeStr = TEXT("Walking"); break;
+            case MOVE_NavWalking:MoveModeStr = TEXT("NavWalking"); break;
+            case MOVE_Falling:   MoveModeStr = TEXT("Falling"); break;
+            case MOVE_Swimming:  MoveModeStr = TEXT("Swimming"); break;
+            case MOVE_Flying:    MoveModeStr = TEXT("Flying"); break;
+            case MOVE_Custom:    MoveModeStr = TEXT("Custom"); break;
+            default:             MoveModeStr = TEXT("None"); break;
+            }
+        }
+
+        const FString DebugMsg = FString::Printf(
+            TEXT("SPD %.1f | MaxWalk %.0f | MaxMode %.0f | Sprint %s | Aim %s | Input %.2f | Cam %.0f | Mode %s"),
+            Speed,
+            MaxWalk,
+            MaxMode,
+            bIsSprinting ? TEXT("T") : TEXT("F"),
+            bIsAiming ? TEXT("T") : TEXT("F"),
+            InputMag,
+            ArmLen,
+            MoveModeStr
+        );
+
+        // Stable key so it updates in-place every frame
+        GEngine->AddOnScreenDebugMessage(1001, 0.f, FColor::Green, DebugMsg, false);
+    }
 }
 
 // Called to bind functionality to input
@@ -315,6 +362,34 @@ void ATPSPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 		// Arm/Unarm Toggle
 		EnhancedInputComponent->BindAction(ArmAction, ETriggerEvent::Started, this, &ATPSPlayer::ToggleArmed);
 	}
+}
+
+void ATPSPlayer::ToggleMovementDebug()
+{
+    bMovementDebugEnabled = !bMovementDebugEnabled;
+    if (!bMovementDebugEnabled && GEngine)
+    {
+        // Clear the line next tick by posting empty with brief lifetime
+        GEngine->AddOnScreenDebugMessage(1001, 0.01f, FColor::Green, TEXT(""), false);
+    }
+}
+
+void ATPSPlayer::ConfigureWeaponCollision()
+{
+    if (!SpawnedWeapon)
+    {
+        return;
+    }
+
+    TArray<UPrimitiveComponent*> PrimComponents;
+    SpawnedWeapon->GetComponents<UPrimitiveComponent>(PrimComponents, true);
+    for (UPrimitiveComponent* Prim : PrimComponents)
+    {
+        if (!Prim) continue;
+        Prim->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Prim->SetGenerateOverlapEvents(false);
+        Prim->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    }
 }
 
 void ATPSPlayer::Move(const FInputActionValue& Value)
@@ -610,24 +685,26 @@ void ATPSPlayer::AttachWeaponToSocket(const FName& SocketName)
 
 void ATPSPlayer::HandleEquipAttach()
 {
-	AttachWeaponToSocket(WeaponSocketName);
-	CombatState = ECombatState::Armed;
-	UpdateCombatStateUI();
+    AttachWeaponToSocket(WeaponSocketName);
+    CombatState = ECombatState::Armed;
+    UpdateCombatStateUI();
+    ConfigureWeaponCollision();
 }
 
 void ATPSPlayer::HandleUnequipAttach()
 {
-	AttachWeaponToSocket(UnarmedBackSocketName);
-	if (bHasPendingStateAfterUnequip)
-	{
-		CombatState = PendingStateAfterUnequip;
-		bHasPendingStateAfterUnequip = false;
-	}
-	else
-	{
-		CombatState = ECombatState::Unarmed;
-	}
-	UpdateCombatStateUI();
+    AttachWeaponToSocket(UnarmedBackSocketName);
+    if (bHasPendingStateAfterUnequip)
+    {
+        CombatState = PendingStateAfterUnequip;
+        bHasPendingStateAfterUnequip = false;
+    }
+    else
+    {
+        CombatState = ECombatState::Unarmed;
+    }
+    UpdateCombatStateUI();
+    ConfigureWeaponCollision();
 }
 
 void ATPSPlayer::UpdateCombatStateUI()

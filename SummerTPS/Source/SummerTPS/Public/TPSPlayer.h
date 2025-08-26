@@ -331,6 +331,9 @@ protected:
 
     void UpdateCombatStateUI();
 
+    /** Ensure attached weapon doesn't block the player or world while equipped/holstered */
+    void ConfigureWeaponCollision();
+
 public:
     /** Requests a state switch with animations */
     UFUNCTION(BlueprintCallable, Category = "Combat")
@@ -341,4 +344,17 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void SetThrownReady();
+
+    /************************************************************************
+    * Debug
+    ************************************************************************/
+public:
+    /** Toggle movement debug overlay (Exec console: ToggleMovementDebug) */
+    UFUNCTION(Exec)
+    void ToggleMovementDebug();
+
+protected:
+    /** When true, prints speed, max speed, sprint, input magnitude, camera length each tick */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Debug")
+    bool bMovementDebugEnabled = false;
 };
