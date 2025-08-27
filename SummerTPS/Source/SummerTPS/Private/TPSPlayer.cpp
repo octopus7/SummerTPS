@@ -145,7 +145,7 @@ void ATPSPlayer::BeginPlay()
 			SpawnedWeapon = World->SpawnActor<AActor>(WeaponBlueprint, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
 			if (SpawnedWeapon)
 			{
-				FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
+				FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, /*bWeldSimulatedBodies*/ false);
 				SpawnedWeapon->AttachToComponent(GetMesh(), AttachmentRules, WeaponSocketName);
 				// Ensure attached weapon doesn't block or overlap the character/world
 				ConfigureWeaponCollision();
@@ -647,6 +647,14 @@ void ATPSPlayer::OnDeath()
 		DisableInput(PlayerController);
 	}
 
+    // Detach weapon to avoid physics coupling with ragdoll
+    if (SpawnedWeapon)
+    {
+        SpawnedWeapon->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        // Disable weapon collision & physics so it doesn't jitter or interfere
+        ConfigureWeaponCollision();
+    }
+
     // Ragdoll: simulate, but do not physically affect other Pawns
     GetMesh()->SetSimulatePhysics(true);
     GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
@@ -669,7 +677,7 @@ void ATPSPlayer::AttachWeaponToSocket(const FName& SocketName)
 		return;
 	}
 
-	FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, true);
+    FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, /*bWeldSimulatedBodies*/ false);
 	SpawnedWeapon->AttachToComponent(GetMesh(), AttachmentRules, SocketName);
 }
 
