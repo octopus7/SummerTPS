@@ -294,46 +294,7 @@ void ATPSPlayer::Tick(float DeltaTime)
     		}
     	}
 
-    // Movement debug overlay (at end of Tick)
-    if (bMovementDebugEnabled && GEngine)
-    {
-        const float Speed = GetVelocity().Size();
-        const float MaxWalk = GetCharacterMovement() ? GetCharacterMovement()->MaxWalkSpeed : 0.f;
-        const float MaxMode = GetCharacterMovement() ? GetCharacterMovement()->GetMaxSpeed() : 0.f;
-        const FVector LastInput = GetLastMovementInputVector();
-        const float InputMag = LastInput.Size();
-        const float ArmLen = CameraBoom ? CameraBoom->TargetArmLength : 0.f;
-
-        const TCHAR* MoveModeStr = TEXT("None");
-        if (GetCharacterMovement())
-        {
-            switch (GetCharacterMovement()->MovementMode)
-            {
-            case MOVE_Walking:   MoveModeStr = TEXT("Walking"); break;
-            case MOVE_NavWalking:MoveModeStr = TEXT("NavWalking"); break;
-            case MOVE_Falling:   MoveModeStr = TEXT("Falling"); break;
-            case MOVE_Swimming:  MoveModeStr = TEXT("Swimming"); break;
-            case MOVE_Flying:    MoveModeStr = TEXT("Flying"); break;
-            case MOVE_Custom:    MoveModeStr = TEXT("Custom"); break;
-            default:             MoveModeStr = TEXT("None"); break;
-            }
-        }
-
-        const FString DebugMsg = FString::Printf(
-            TEXT("SPD %.1f | MaxWalk %.0f | MaxMode %.0f | Sprint %s | Aim %s | Input %.2f | Cam %.0f | Mode %s"),
-            Speed,
-            MaxWalk,
-            MaxMode,
-            bIsSprinting ? TEXT("T") : TEXT("F"),
-            bIsAiming ? TEXT("T") : TEXT("F"),
-            InputMag,
-            ArmLen,
-            MoveModeStr
-        );
-
-        // Stable key so it updates in-place every frame
-        GEngine->AddOnScreenDebugMessage(1001, 0.f, FColor::Green, DebugMsg, false);
-    }
+    // Removed SPD on-screen movement debug overlay
 }
 
 // Called to bind functionality to input
