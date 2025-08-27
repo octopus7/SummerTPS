@@ -15,6 +15,7 @@
 #include "Animation/AnimMontage.h"
 #include "Blueprint/UserWidget.h"
 #include "CombatStateWidget.h"
+#include "UI/UISessionSubsystem.h"
 #include "Components/PrimitiveComponent.h"
 
 // Sets default values
@@ -168,14 +169,22 @@ void ATPSPlayer::BeginPlay()
 		HealthComponent->OnHealthChanged.AddDynamic(this, &ATPSPlayer::OnHealthChanged);
 	}
 
-	// Create UI if class assigned, otherwise use default native widget
+	// Ensure UI via subsystem and push initial state/health
 	if (APlayerController* PC = Cast<APlayerController>(Controller))
 	{
-			TSubclassOf<UUserWidget> ClassToUse = CombatStateWidgetClass ? CombatStateWidgetClass : TSubclassOf<UUserWidget>(UCombatStateWidget::StaticClass());
-		CombatStateWidgetInstance = CreateWidget<UUserWidget>(PC, ClassToUse);
-		if (CombatStateWidgetInstance)
+		if (ULocalPlayer* LP = PC->GetLocalPlayer())
 		{
-			CombatStateWidgetInstance->AddToViewport();
+			if (UUISessionSubsystem* UIS = LP->GetSubsystem<UUISessionSubsystem>())
+			{
+				// Create HUD via subsystem using assigned class as fallback
+				TSubclassOf<UUserWidget> HUDClassToUse = CombatStateWidgetClass ? CombatStateWidgetClass : TSubclassOf<UUserWidget>(UCombatStateWidget::StaticClass());
+				UIS->EnsureHUDWithClass(PC, HUDClassToUse);
+				UIS->PushCombatState(CombatState);
+				if (HealthComponent)
+				{
+					UIS->PushHealth(HealthComponent->GetHealth(), HealthComponent->GetDefaultHealth());
+				}
+			}
 		}
 	}
 
@@ -387,6 +396,9 @@ void ATPSPlayer::ConfigureWeaponCollision()
     for (UPrimitiveComponent* Prim : PrimComponents)
     {
         if (!Prim) continue;
+        // Ensure weapon does not simulate physics while attached
+        // to avoid invalid simulate options with NoCollision.
+        Prim->SetSimulatePhysics(false);
         Prim->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         Prim->SetGenerateOverlapEvents(false);
         Prim->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
@@ -643,6 +655,19 @@ void ATPSPlayer::OnHealthChanged(UHealthComponent* OwningHealthComp, float Healt
     {
         OnDeath();
     }
+
+    // Push health to UI subsystem
+    if (APlayerController* PC = Cast<APlayerController>(Controller))
+    {
+        if (ULocalPlayer* LP = PC->GetLocalPlayer())
+        {
+            if (UUISessionSubsystem* UIS = LP->GetSubsystem<UUISessionSubsystem>())
+            {
+                const float MaxHealth = HealthComponent ? HealthComponent->GetDefaultHealth() : Health;
+                UIS->PushHealth(Health, MaxHealth);
+            }
+        }
+    }
 }
 
 void ATPSPlayer::OnDeath()
@@ -720,15 +745,28 @@ void ATPSPlayer::UpdateCombatStateUI()
 	case ECombatState::Unequipping: Label = TEXT("비무장 전환 중 (Unequipping)"); break;
 	}
 
-	if (CombatStateWidgetInstance)
-	{
-		static const FName FuncName = FName("UpdateStateText");
-		if (CombatStateWidgetInstance->GetClass()->FindFunctionByName(FuncName))
-		{
-			struct FParams { FText InText; } Params{ FText::FromString(Label) };
-			CombatStateWidgetInstance->ProcessEvent(CombatStateWidgetInstance->FindFunction(FuncName), &Params);
-		}
-	}
+    // Push state to UI subsystem
+    if (APlayerController* PC = Cast<APlayerController>(Controller))
+    {
+        if (ULocalPlayer* LP = PC->GetLocalPlayer())
+        {
+            if (UUISessionSubsystem* UIS = LP->GetSubsystem<UUISessionSubsystem>())
+            {
+                UIS->PushCombatState(CombatState);
+            }
+        }
+    }
+
+    // Back-compat: update legacy widget if still used
+    if (CombatStateWidgetInstance)
+    {
+        static const FName FuncName = FName("UpdateStateText");
+        if (CombatStateWidgetInstance->GetClass()->FindFunctionByName(FuncName))
+        {
+            struct FParams { FText InText; } Params{ FText::FromString(Label) };
+            CombatStateWidgetInstance->ProcessEvent(CombatStateWidgetInstance->FindFunction(FuncName), &Params);
+        }
+    }
 
 	if (GEngine)
 	{
