@@ -7,6 +7,7 @@
 #include "AIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "HealthComponent.h"
 
 AEnemyCharacter::AEnemyCharacter()
 {
@@ -49,6 +50,8 @@ AEnemyCharacter::AEnemyCharacter()
         MoveComp->bConstrainToPlane = false;
         //MoveComp->SetPlaneConstraintNormal(FVector::UpVector);
     }
+
+    HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("HealthComponent"));
 }
 
 void AEnemyCharacter::BeginPlay()
@@ -73,6 +76,11 @@ void AEnemyCharacter::BeginPlay()
             LifeText->SetHiddenInGame(true);
         }
     }
+    if (HealthComponent)
+    {
+        HealthComponent->OnHealthChanged.AddDynamic(this, &AEnemyCharacter::OnHealthChanged);
+    }
+    UpdateHPText();
 }
 
 void AEnemyCharacter::PossessedBy(AController* NewController)
@@ -91,24 +99,14 @@ void AEnemyCharacter::UnPossessed()
 
 float AEnemyCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
+    // Let base class handle built-in events. Real health change happens in UHealthComponent via OnTakeAnyDamage
     const float SuperDealt = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
-    CurrentHits++;
+    // Optionally display hit feedback
     if (GEngine)
     {
-        FString Msg = FString::Printf(TEXT("Enemy hit: %d / %d"), CurrentHits, HitsToDie);
+        FString Msg = FString::Printf(TEXT("Enemy took damage: %.1f"), DamageAmount);
         GEngine->AddOnScreenDebugMessage(reinterpret_cast<uint64>(this), 1.0f, FColor::Red, Msg);
     }
-
-    if (CurrentHits >= HitsToDie)
-    {
-        HandleDeath();
-    }
-    else
-    {
-        UpdateHPText();
-    }
-
     return SuperDealt + DamageAmount;
 }
 
@@ -157,7 +155,6 @@ void AEnemyCharacter::UpdateHPText()
     {
         return;
     }
-    const int32 Remaining = FMath::Max(0, HitsToDie - CurrentHits);
 
     // State text (English). If AI is null, show "null"
     FString StateStr;
@@ -195,20 +192,44 @@ void AEnemyCharacter::UpdateHPText()
             Extra = FString::Printf(TEXT(" (%.1fs)"), Rem);
         }
     }
-    const FString Txt = FString::Printf(TEXT("%d | %s%s"), Remaining, *StateStr, *Extra);
+    float HP = 0.f, MaxHP = 0.f;
+    if (HealthComponent)
+    {
+        HP = HealthComponent->GetHealth();
+        MaxHP = HealthComponent->GetDefaultHealth();
+    }
+    else
+    {
+        // Fallback to hits model if no HealthComponent exists
+        const int32 Remaining = FMath::Max(0, HitsToDie - CurrentHits);
+        HP = (float)Remaining;
+        MaxHP = (float)HitsToDie;
+    }
+
+    const FString Txt = FString::Printf(TEXT("HP: %.0f/%.0f | %s%s"), HP, MaxHP, *StateStr, *Extra);
     HPText->SetText(FText::FromString(Txt));
 
-    if (Remaining <= 1)
+    const float Ratio = (MaxHP > 0.f) ? (HP / MaxHP) : 0.f;
+    if (Ratio <= 0.33f)
     {
         HPText->SetTextRenderColor(FColor::Red);
     }
-    else if (Remaining == 2)
+    else if (Ratio <= 0.66f)
     {
         HPText->SetTextRenderColor(FColor::Yellow);
     }
     else
     {
         HPText->SetTextRenderColor(FColor::White);
+    }
+}
+
+void AEnemyCharacter::OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const UDamageType* DamageType, AController* InstigatedBy, AActor* DamageCauser)
+{
+    UpdateHPText();
+    if (OwningHealthComp && OwningHealthComp->IsDead())
+    {
+        HandleDeath();
     }
 }
 

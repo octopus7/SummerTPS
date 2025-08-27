@@ -5,6 +5,7 @@
 #include "EnemyCharacter.generated.h"
 
 class UTextRenderComponent;
+class UHealthComponent;
 
 // 간이 적 캐릭터: 뒤집힌 콘 모양의 시각화만 제공
 UCLASS(meta=(DisplayName="EnemyCharacter_임시"))
@@ -28,6 +29,9 @@ protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
     UTextRenderComponent* LifeText;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+    UHealthComponent* HealthComponent;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Health")
     int32 HitsToDie = 3;
 
@@ -41,6 +45,9 @@ protected:
     void HandleDeath();
     void UpdateHPText();
     void UpdateLifetimeText();
+
+    UFUNCTION()
+    void OnHealthChanged(UHealthComponent* OwningHealthComp, float Health, float HealthDelta, const class UDamageType* DamageType, class AController* InstigatedBy, AActor* DamageCauser);
 
     UPROPERTY(Transient)
     class AEnemyAIController* CachedAIController = nullptr;
