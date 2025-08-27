@@ -647,13 +647,8 @@ void ATPSPlayer::OnDeath()
 		DisableInput(PlayerController);
 	}
 
-    // Detach weapon to avoid physics coupling with ragdoll
-    if (SpawnedWeapon)
-    {
-        SpawnedWeapon->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-        // Disable weapon collision & physics so it doesn't jitter or interfere
-        ConfigureWeaponCollision();
-    }
+    // Drop weapon with physics so it separates cleanly from ragdoll
+    DropWeaponWithPhysics();
 
     // Ragdoll: simulate, but do not physically affect other Pawns
     GetMesh()->SetSimulatePhysics(true);
@@ -679,6 +674,39 @@ void ATPSPlayer::AttachWeaponToSocket(const FName& SocketName)
 
     FAttachmentTransformRules AttachmentRules(EAttachmentRule::SnapToTarget, /*bWeldSimulatedBodies*/ false);
 	SpawnedWeapon->AttachToComponent(GetMesh(), AttachmentRules, SocketName);
+}
+
+void ATPSPlayer::DropWeaponWithPhysics()
+{
+    if (!SpawnedWeapon)
+    {
+        return;
+    }
+
+    // Detach first to avoid inheriting skeletal motion
+    SpawnedWeapon->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+    // Enable physics and sane collision on all primitive components
+    TArray<UPrimitiveComponent*> PrimComponents;
+    SpawnedWeapon->GetComponents<UPrimitiveComponent>(PrimComponents, true);
+    for (UPrimitiveComponent* Prim : PrimComponents)
+    {
+        if (!Prim) continue;
+
+        Prim->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Prim->SetGenerateOverlapEvents(false);
+        Prim->SetCollisionResponseToAllChannels(ECR_Block);
+        // Do not interact with Pawns to avoid pushing characters
+        Prim->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+        // Often you don't want to block camera
+        Prim->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+
+        Prim->SetSimulatePhysics(true);
+
+        // Apply a small outward + upward impulse for a natural drop
+        const FVector Impulse = GetActorForwardVector() * WeaponDropForwardImpulse + FVector::UpVector * WeaponDropUpImpulse;
+        Prim->AddImpulse(Impulse, NAME_None, true);
+    }
 }
 
 void ATPSPlayer::HandleEquipAttach()

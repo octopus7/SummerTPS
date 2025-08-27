@@ -322,6 +322,16 @@ protected:
     void HandleEquipAttach();
     void HandleUnequipAttach();
 
+    /** Drop the currently held weapon and enable physics on it */
+    void DropWeaponWithPhysics();
+
+    /** Impulse strength applied to dropped weapon */
+    UPROPERTY(EditDefaultsOnly, Category = "Weapon|Drop")
+    float WeaponDropForwardImpulse = 150.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Weapon|Drop")
+    float WeaponDropUpImpulse = 120.f;
+
     /** UI: simple widget hook */
     UPROPERTY(EditDefaultsOnly, Category = "UI")
     TSubclassOf<UUserWidget> CombatStateWidgetClass;
