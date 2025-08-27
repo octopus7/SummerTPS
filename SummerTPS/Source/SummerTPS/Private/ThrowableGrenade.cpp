@@ -5,6 +5,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "Engine/Engine.h"
+#include "DrawDebugHelpers.h"
 
 AThrowableGrenade::AThrowableGrenade()
 {
@@ -32,7 +33,7 @@ AThrowableGrenade::AThrowableGrenade()
     ProjectileMovement->ProjectileGravityScale = 1.0f;
 
     FuseTime = 2.5f;
-    ExplosionDamage = 120.f;
+    ExplosionDamage = 60.f;
     ExplosionRadius = 350.f;
     DamageTypeClass = UDamageType::StaticClass();
     PostExplosionLifespan = 2.0f;
@@ -81,6 +82,9 @@ void AThrowableGrenade::Explode()
         InstigatorController = InstigatorPawn->GetController();
     }
     UGameplayStatics::ApplyRadialDamage(this, ExplosionDamage, GetActorLocation(), ExplosionRadius, DamageTypeClass, TArray<AActor*>(), this, InstigatorController, true);
+
+    // Debug: visualize damage radius as wireframe sphere for 0.5s
+    DrawDebugSphere(GetWorld(), GetActorLocation(), ExplosionRadius, 24, FColor::Red, false, 0.5f, 0, 1.5f);
 
     HideAndDisable();
     SetLifeSpan(PostExplosionLifespan);

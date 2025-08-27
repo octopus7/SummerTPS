@@ -113,6 +113,9 @@ ATPSPlayer::ATPSPlayer()
 
 	// Debug
 	bMovementDebugEnabled = true; // default on to investigate speed issue; toggle via console if noisy
+
+	// Throwable defaults
+	HeldGrenade = nullptr;
 }
 
 // Called when the game starts or when spawned
@@ -212,6 +215,11 @@ void ATPSPlayer::BeginPlay()
 	if (!ThrowAction)
 	{
 		UE_LOG(LogTemp, Log, TEXT("TPSPlayer: ThrowAction not assigned; FireAction will throw while ThrownReady."));
+	}
+
+	if (GetMesh() && ThrowAttachSocketName != NAME_None && !GetMesh()->DoesSocketExist(ThrowAttachSocketName))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TPSPlayer: ThrowAttachSocket '%s' does not exist on mesh"), *ThrowAttachSocketName.ToString());
 	}
 }
 
@@ -741,11 +749,20 @@ void ATPSPlayer::OnHealthChanged(UHealthComponent* OwningHealthComp, float Healt
 
 void ATPSPlayer::ComputeThrowParams(FVector& OutStart, FVector& OutVelocity) const
 {
-    // Start from camera slightly forward to avoid self collision
-    const FVector CamLoc = FollowCamera ? FollowCamera->GetComponentLocation() : (GetActorLocation() + FVector(0,0,60));
-    const FRotator CamRot = FollowCamera ? FollowCamera->GetComponentRotation() : GetControlRotation();
-    const FVector Forward = CamRot.Vector();
-    OutStart = CamLoc + Forward * 30.f; // small offset ahead of camera
+    // Start from character throw socket (hand) if available; else fallback to a point in front of the character
+    FVector Start = GetActorLocation() + GetActorForwardVector() * 30.f + FVector(0, 0, 60.f);
+    if (GetMesh())
+    {
+        if (ThrowAttachSocketName != NAME_None && GetMesh()->DoesSocketExist(ThrowAttachSocketName))
+        {
+            Start = GetMesh()->GetSocketLocation(ThrowAttachSocketName);
+        }
+    }
+
+    const FRotator AimRot = Controller ? Controller->GetControlRotation() : GetActorRotation();
+    const FVector Forward = AimRot.Vector();
+
+    OutStart = Start;
     OutVelocity = Forward * ThrowSpeed;
 }
 
@@ -849,6 +866,12 @@ void ATPSPlayer::HandleUnequipAttach()
     }
     UpdateCombatStateUI();
     ConfigureWeaponCollision();
+
+    // If we transitioned into ThrownReady, spawn/attach held grenade now
+    if (CombatState == ECombatState::ThrownReady)
+    {
+        OnEnterThrownReady();
+    }
 }
 
 void ATPSPlayer::UpdateCombatStateUI()
@@ -901,11 +924,15 @@ void ATPSPlayer::RequestSetCombatState(ECombatState NewState)
 
 	switch (NewState)
 	{
-	case ECombatState::Armed:
-		if (CombatState == ECombatState::Armed)
-		{
-			return;
-		}
+case ECombatState::Armed:
+        if (CombatState == ECombatState::ThrownReady)
+        {
+            OnExitThrownReady();
+        }
+        if (CombatState == ECombatState::Armed)
+        {
+            return;
+        }
 		// From Unarmed/ThrownReady -> Equip
 		if (EquipMontage && GetMesh() && GetMesh()->GetAnimInstance())
 		{
@@ -939,13 +966,17 @@ void ATPSPlayer::RequestSetCombatState(ECombatState NewState)
 				HandleUnequipAttach();
 			}
 		}
-		else
-		{
-			// From ThrownReady -> Unarmed
-			CombatState = ECombatState::Unarmed;
-			UpdateCombatStateUI();
-		}
-		break;
+        else
+        {
+            // From ThrownReady -> Unarmed
+            if (CombatState == ECombatState::ThrownReady)
+            {
+                OnExitThrownReady();
+            }
+            CombatState = ECombatState::Unarmed;
+            UpdateCombatStateUI();
+        }
+        break;
 
 	case ECombatState::ThrownReady:
 		if (CombatState == ECombatState::Armed)
@@ -954,12 +985,13 @@ void ATPSPlayer::RequestSetCombatState(ECombatState NewState)
 			PendingStateAfterUnequip = ECombatState::ThrownReady;
 			RequestSetCombatState(ECombatState::Unarmed);
 		}
-		else
-		{
-			CombatState = ECombatState::ThrownReady;
-			UpdateCombatStateUI();
-		}
-		break;
+        else
+        {
+            CombatState = ECombatState::ThrownReady;
+            UpdateCombatStateUI();
+            OnEnterThrownReady();
+        }
+        break;
 
 	default:
 		break;
@@ -988,6 +1020,81 @@ void ATPSPlayer::SetThrownReady()
     RequestSetCombatState(ECombatState::ThrownReady);
 }
 
+void ATPSPlayer::OnEnterThrownReady()
+{
+    // Clean any previous held grenade
+    if (HeldGrenade)
+    {
+        HeldGrenade->Destroy();
+        HeldGrenade = nullptr;
+    }
+
+    if (!GrenadeClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("OnEnterThrownReady: GrenadeClass not set"));
+        return;
+    }
+
+    if (!GetMesh())
+    {
+        return;
+    }
+
+    // Spawn grenade and attach to throw socket
+    FActorSpawnParameters Params;
+    Params.Owner = this;
+    Params.Instigator = GetInstigator();
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    FVector SpawnLoc = GetActorLocation();
+    FRotator SpawnRot = GetActorRotation();
+    HeldGrenade = GetWorld()->SpawnActor<AThrowableGrenade>(GrenadeClass, SpawnLoc, SpawnRot, Params);
+    if (!HeldGrenade)
+    {
+        UE_LOG(LogTemp, Error, TEXT("OnEnterThrownReady: Failed to spawn held grenade"));
+        return;
+    }
+
+    // Disable collision while held and deactivate movement
+    TArray<UPrimitiveComponent*> PrimComponents;
+    HeldGrenade->GetComponents<UPrimitiveComponent>(PrimComponents, true);
+    for (UPrimitiveComponent* Prim : PrimComponents)
+    {
+        if (!Prim) continue;
+        Prim->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Prim->SetGenerateOverlapEvents(false);
+    }
+    if (UProjectileMovementComponent* Move = HeldGrenade->ProjectileMovement)
+    {
+        Move->StopMovementImmediately();
+        Move->Deactivate();
+    }
+
+    const FName SocketToUse = (ThrowAttachSocketName != NAME_None && GetMesh()->DoesSocketExist(ThrowAttachSocketName))
+                                ? ThrowAttachSocketName : WeaponSocketName;
+    FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, false);
+    HeldGrenade->AttachToComponent(GetMesh(), AttachRules, SocketToUse);
+
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, FString::Printf(TEXT("Held grenade attached to %s"), *SocketToUse.ToString()));
+    }
+    UE_LOG(LogTemp, Log, TEXT("OnEnterThrownReady: Held grenade attached to %s"), *SocketToUse.ToString());
+}
+
+void ATPSPlayer::OnExitThrownReady()
+{
+    if (HeldGrenade)
+    {
+        HeldGrenade->Destroy();
+        HeldGrenade = nullptr;
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Cyan, TEXT("Held grenade destroyed (exit ThrownReady)"));
+        }
+        UE_LOG(LogTemp, Log, TEXT("OnExitThrownReady: Held grenade cleaned"));
+    }
+}
+
 void ATPSPlayer::ThrowGrenade()
 {
     if (!GrenadeClass)
@@ -1005,6 +1112,49 @@ void ATPSPlayer::ThrowGrenade()
     UWorld* World = GetWorld();
     if (!World)
     {
+        return;
+    }
+
+    // If we have a held grenade (attached), detach and throw it
+    if (HeldGrenade)
+    {
+        FVector Start, Vel;
+        ComputeThrowParams(Start, Vel);
+        HeldGrenade->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+        // Re-enable collision on all primitive components
+        TArray<UPrimitiveComponent*> PrimComponents;
+        HeldGrenade->GetComponents<UPrimitiveComponent>(PrimComponents, true);
+        for (UPrimitiveComponent* Prim : PrimComponents)
+        {
+            if (!Prim) continue;
+            Prim->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+            Prim->SetGenerateOverlapEvents(true);
+        }
+
+        if (UProjectileMovementComponent* Move = HeldGrenade->ProjectileMovement)
+        {
+            Move->Activate(true);
+            Move->Velocity = Vel;
+        }
+        HeldGrenade->FuseTime = GrenadeFuseTime;
+        HeldGrenade->ActivateFuse();
+
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("Held grenade thrown"));
+        }
+        UE_LOG(LogTemp, Log, TEXT("ThrowGrenade(): Held grenade thrown"));
+
+        HeldGrenade = nullptr;
+
+        // Return to unarmed after throw; weapon stays on back
+        RequestSetCombatState(ECombatState::Unarmed);
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Cyan, TEXT("State -> Unarmed after throw"));
+        }
+        UE_LOG(LogTemp, Log, TEXT("ThrowGrenade(): State -> Unarmed"));
         return;
     }
 

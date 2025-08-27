@@ -199,6 +199,14 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable")
     bool bDrawThrowPrediction = true;
 
+    /** Socket used to hold grenade in ThrownReady (e.g., hand). Must exist on character mesh */
+    UPROPERTY(EditDefaultsOnly, Category = "Throwable")
+    FName ThrowAttachSocketName = FName("ThrowSocket");
+
+    /** Grenade instance being held while in ThrownReady */
+    UPROPERTY(Transient)
+    AThrowableGrenade* HeldGrenade;
+
 	/** Default walk speed of the character */
 	UPROPERTY(EditDefaultsOnly, Category = "Movement")
 	float DefaultWalkSpeed;
@@ -308,6 +316,12 @@ private:
 
     /** Helper to compute throw start location and velocity */
     void ComputeThrowParams(FVector& OutStart, FVector& OutVelocity) const;
+
+    /** Spawn and attach a grenade to ThrowAttachSocket while in ThrownReady */
+    void OnEnterThrownReady();
+
+    /** Cleanup held grenade when leaving ThrownReady */
+    void OnExitThrownReady();
 
     /** Updates the character's rotation settings based on aiming and firing states */
     void UpdateRotationSettings();
