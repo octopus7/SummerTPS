@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "UObject/WeakObjectPtr.h"
 #include "Portal.generated.h"
 
 class UBoxComponent;
@@ -94,16 +95,44 @@ protected:
     float LabelVisibleMaxDistance;
 
 private:
-	UFUNCTION()
-	void OnTriggerBeginOverlap(
-		UPrimitiveComponent* OverlappedComponent,
-		AActor* OtherActor,
-		UPrimitiveComponent* OtherComp,
-		int32 OtherBodyIndex,
-		bool bFromSweep,
-		const FHitResult& SweepResult);
+    UFUNCTION()
+    void OnTriggerBeginOverlap(
+        UPrimitiveComponent* OverlappedComponent,
+        AActor* OtherActor,
+        UPrimitiveComponent* OtherComp,
+        int32 OtherBodyIndex,
+        bool bFromSweep,
+        const FHitResult& SweepResult);
 
     APortal* FindDestinationPortal() const;
 
     void UpdateLabelText();
+
+    // Original trigger box extent captured at BeginPlay (local/unscaled)
+    FVector OriginalBoxExtent;
+
+    /** Seconds to disable teleporting after a teleport (prevents ping-pong). Default 3s */
+    UPROPERTY(EditAnywhere, Category = "Portal")
+    float TeleportCooldownSeconds;
+
+    // World time when this portal can teleport again
+    double CooldownEndTime = 0.0;
+
+    bool IsOnCooldown() const;
+    void StartCooldown();
+
+    /** Use per-actor cooldown instead of global portal cooldown */
+    UPROPERTY(EditAnywhere, Category = "Portal")
+    bool bUseActorCooldown = true;
+
+    /** Also allow global portal cooldown (applies to everyone) */
+    UPROPERTY(EditAnywhere, Category = "Portal")
+    bool bUseGlobalCooldown = false;
+
+    // Records when each actor can use this portal again
+    TMap<TWeakObjectPtr<AActor>, double> ActorCooldowns;
+
+    bool IsActorOnCooldown(AActor* Actor);
+    void StartActorCooldown(AActor* Actor);
+    void PruneActorCooldowns();
 };

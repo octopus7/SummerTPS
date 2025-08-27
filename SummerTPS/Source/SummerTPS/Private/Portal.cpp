@@ -43,16 +43,27 @@ APortal::APortal()
     bUseDistanceVisibility = true;
     LabelVisibleMinDistance = 0.f;
     LabelVisibleMaxDistance = 3000.f;
+
+    TeleportCooldownSeconds = 3.0f;
+
+    bUseActorCooldown = true;
+    bUseGlobalCooldown = false;
 }
 
 void APortal::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
-	if (TriggerBox)
-	{
-		TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &APortal::OnTriggerBeginOverlap);
-	}
+    if (TriggerBox)
+    {
+        // Capture original box extent (local/unscaled) and shrink the actual trigger by half for gameplay
+        OriginalBoxExtent = TriggerBox->GetUnscaledBoxExtent();
+        if (!OriginalBoxExtent.IsNearlyZero())
+        {
+            TriggerBox->SetBoxExtent(OriginalBoxExtent * 0.5f, true);
+        }
+        TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &APortal::OnTriggerBeginOverlap);
+    }
 }
 
 void APortal::Tick(float DeltaSeconds)
@@ -62,9 +73,22 @@ void APortal::Tick(float DeltaSeconds)
     if (bDebugDraw && TriggerBox)
     {
         const FVector Center = TriggerBox->GetComponentLocation();
-        const FVector Extent = TriggerBox->GetScaledBoxExtent();
         const FQuat Rot = TriggerBox->GetComponentQuat();
-        DrawDebugBox(GetWorld(), Center, Extent, Rot, FColor::Cyan, false, 0.f, 0, DebugLineThickness);
+        // Draw using the original box size (before halving), with current component/world scale applied
+        FVector WorldExtent;
+        if (!OriginalBoxExtent.IsNearlyZero())
+        {
+            const FVector ScaleAbs = TriggerBox->GetComponentScale().GetAbs();
+            WorldExtent = FVector(OriginalBoxExtent.X * ScaleAbs.X,
+                                  OriginalBoxExtent.Y * ScaleAbs.Y,
+                                  OriginalBoxExtent.Z * ScaleAbs.Z);
+        }
+        else
+        {
+            // Fallback to current box extent if original wasn't captured
+            WorldExtent = TriggerBox->GetScaledBoxExtent();
+        }
+        DrawDebugBox(GetWorld(), Center, WorldExtent, Rot, FColor::Cyan, false, 0.f, 0, DebugLineThickness);
     }
 
     // Face the label toward the active player camera and control visibility by distance
@@ -155,30 +179,54 @@ void APortal::OnConstruction(const FTransform& Transform)
 }
 
 void APortal::OnTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent,
-	AActor* OtherActor,
-	UPrimitiveComponent* OtherComp,
-	int32 /*OtherBodyIndex*/,
-	bool /*bFromSweep*/,
-	const FHitResult& /*SweepResult*/)
+    AActor* OtherActor,
+    UPrimitiveComponent* OtherComp,
+    int32 /*OtherBodyIndex*/,
+    bool /*bFromSweep*/,
+    const FHitResult& /*SweepResult*/)
 {
-	if (!OtherActor || OtherActor == this)
-	{
-		return;
-	}
+    if (!OtherActor || OtherActor == this)
+    {
+        return;
+    }
 
-	APortal* Dest = FindDestinationPortal();
-	if (!Dest)
-	{
-		return;
-	}
+    // Prevent teleporting while on cooldown (to stop cyclic ping-pong)
+    if (bUseActorCooldown && IsActorOnCooldown(OtherActor))
+    {
+        return;
+    }
+
+    if (bUseGlobalCooldown && IsOnCooldown())
+    {
+        return;
+    }
+
+    APortal* Dest = FindDestinationPortal();
+    if (!Dest)
+    {
+        return;
+    }
 
 	// Compute safe destination just outside the destination portal box
 	const FVector DestForward = Dest->GetActorForwardVector();
 	const FVector DestLocation = Dest->GetActorLocation() + DestForward * Dest->DestinationForwardOffset + FVector(0.f, 0.f, Dest->DestinationZOffset);
 	const FRotator DestRotation = Dest->GetActorRotation();
 
-	// Teleport the overlapping actor
+    // Teleport the overlapping actor
     OtherActor->TeleportTo(DestLocation, DestRotation, false, true);
+
+    // Start cooldown on both source and destination portals
+    if (bUseActorCooldown)
+    {
+        StartActorCooldown(OtherActor);
+        Dest->StartActorCooldown(OtherActor);
+    }
+
+    if (bUseGlobalCooldown)
+    {
+        StartCooldown();
+        Dest->StartCooldown();
+    }
 }
 
 APortal* APortal::FindDestinationPortal() const
@@ -214,4 +262,72 @@ void APortal::UpdateLabelText()
     const FString DestId = TargetPortalId.IsEmpty() ? TEXT("?") : TargetPortalId;
     const FString Label = FString::Printf(TEXT("%s -> %s"), *SelfId, *DestId);
     TextLabel->SetText(FText::FromString(Label));
+}
+
+bool APortal::IsOnCooldown() const
+{
+    if (!GetWorld())
+    {
+        return false;
+    }
+    const double Now = GetWorld()->GetTimeSeconds();
+    return Now < CooldownEndTime;
+}
+
+void APortal::StartCooldown()
+{
+    if (!GetWorld())
+    {
+        return;
+    }
+    CooldownEndTime = GetWorld()->GetTimeSeconds() + TeleportCooldownSeconds;
+}
+
+bool APortal::IsActorOnCooldown(AActor* Actor)
+{
+    if (!Actor || !GetWorld())
+    {
+        return false;
+    }
+
+    const double Now = GetWorld()->GetTimeSeconds();
+    PruneActorCooldowns();
+
+    TWeakObjectPtr<AActor> Key(Actor);
+    if (double* Expire = ActorCooldowns.Find(Key))
+    {
+        if (Now < *Expire)
+        {
+            return true;
+        }
+        // Expired
+        ActorCooldowns.Remove(Key);
+    }
+    return false;
+}
+
+void APortal::StartActorCooldown(AActor* Actor)
+{
+    if (!Actor || !GetWorld())
+    {
+        return;
+    }
+    const double Until = GetWorld()->GetTimeSeconds() + TeleportCooldownSeconds;
+    ActorCooldowns.Add(TWeakObjectPtr<AActor>(Actor), Until);
+}
+
+void APortal::PruneActorCooldowns()
+{
+    if (!GetWorld())
+    {
+        return;
+    }
+    const double Now = GetWorld()->GetTimeSeconds();
+    for (auto It = ActorCooldowns.CreateIterator(); It; ++It)
+    {
+        if (!It.Key().IsValid() || Now >= It.Value())
+        {
+            It.RemoveCurrent();
+        }
+    }
 }
