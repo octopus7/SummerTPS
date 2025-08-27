@@ -344,7 +344,7 @@ void AEnemyAIController::TryAttack()
     if (World && AttackProjectileClass)
     {
         // do not attack me
-        bool enableAttack = false;
+        bool enableAttack = true;
         if(!enableAttack)
         {
             return;

@@ -3,6 +3,10 @@
 #include "Components/TextBlock.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+// ViewModels
+#include "UI/CombatStateViewModel.h"
+#include "UI/HealthViewModel.h"
+#include "Components/ProgressBar.h"
 
 void UCombatStateWidget::NativeConstruct()
 {
@@ -34,8 +38,43 @@ if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(StateTextBlock->Slot))
 
 void UCombatStateWidget::UpdateStateText(FText InText)
 {
-	if (StateTextBlock)
-	{
-		StateTextBlock->SetText(InText);
-	}
+    if (StateTextBlock)
+    {
+        StateTextBlock->SetText(InText);
+    }
+}
+
+void UCombatStateWidget::InitializeViewModels(UCombatStateViewModel* InCombatVM, UHealthViewModel* InHealthVM)
+{
+    CombatVM = InCombatVM;
+    HealthVM = InHealthVM;
+    // Auto-bind to health changes if a ProgressBar has been bound via UMG
+    if (HealthVM)
+    {
+        // Clean any prior binding
+        HealthVM->OnHealthChanged.RemoveDynamic(this, &UCombatStateWidget::HandleHealthChanged);
+        HealthVM->OnHealthChanged.AddDynamic(this, &UCombatStateWidget::HandleHealthChanged);
+
+        // Initialize current value to the bar (if available)
+        HandleHealthChanged(HealthVM->Current, HealthVM->Max);
+    }
+    OnViewModelsReady();
+}
+
+void UCombatStateWidget::NativeDestruct()
+{
+    if (HealthVM)
+    {
+        HealthVM->OnHealthChanged.RemoveDynamic(this, &UCombatStateWidget::HandleHealthChanged);
+    }
+    Super::NativeDestruct();
+}
+
+void UCombatStateWidget::HandleHealthChanged(float Current, float Max)
+{
+    if (HPBar)
+    {
+        const float Percent = (Max > 0.f) ? (Current / Max) : 0.f;
+        HPBar->SetPercent(Percent);
+    }
 }

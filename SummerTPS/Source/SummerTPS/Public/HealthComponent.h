@@ -35,4 +35,7 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Health")
     bool IsDead() const;
+
+    UFUNCTION(BlueprintCallable, Category = "Health")
+    float GetDefaultHealth() const { return DefaultHealth; }
 };

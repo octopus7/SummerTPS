@@ -30,3 +30,5 @@
 ## Security & Configuration Tips
 - Avoid storing secrets in `Config/`. Keep changes to generated folders out of reviews when possible. Validate added dependencies in `SummerTPS.Build.cs` and the `.uproject` file.
 
+## Documentation Conventions
+- UI-related docs should be bilingual (Korean/English). When adding or updating UI documentation (e.g., `UI_Architecture.md`), include Korean and English side-by-side so designers and engineers can both follow the guidance.
