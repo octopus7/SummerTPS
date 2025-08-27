@@ -17,6 +17,7 @@
 #include "CombatStateWidget.h"
 #include "UI/UISessionSubsystem.h"
 #include "Components/PrimitiveComponent.h"
+#include "ThrowableGrenade.h"
 
 // Sets default values
 ATPSPlayer::ATPSPlayer()
@@ -117,7 +118,7 @@ ATPSPlayer::ATPSPlayer()
 // Called when the game starts or when spawned
 void ATPSPlayer::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
 	// Set initial camera boom properties
 	CameraBoom->TargetArmLength = DefaultCameraArmLength;
@@ -189,6 +190,29 @@ void ATPSPlayer::BeginPlay()
 	}
 
 	UpdateCombatStateUI();
+
+	// Quick sanity hints for grenade setup
+	if (!GrenadeClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TPSPlayer: GrenadeClass is not set"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 4.0f, FColor::Red, TEXT("[Grenade] GrenadeClass not set on TPSPlayer"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Log, TEXT("TPSPlayer: GrenadeClass set to %s"), *GrenadeClass->GetName());
+	}
+
+	if (!ThrowReadyAction)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("TPSPlayer: ThrowReadyAction is not assigned (optional)"));
+	}
+	if (!ThrowAction)
+	{
+		UE_LOG(LogTemp, Log, TEXT("TPSPlayer: ThrowAction not assigned; FireAction will throw while ThrownReady."));
+	}
 }
 
 // Called every frame
@@ -266,7 +290,7 @@ void ATPSPlayer::Tick(float DeltaTime)
 		DrawDebugString(GetWorld(), FVector(0, 0, 100), "Not Covered", this, FColor::Red, 0.f);
 	}
 
-	// Draw projectile path only when armed
+	// Draw projectile path when armed (gun)
 	if (ProjectileClass && SpawnedWeapon && CombatState == ECombatState::Armed)
 	{
 		FVector MuzzleLocation;
@@ -293,6 +317,24 @@ void ATPSPlayer::Tick(float DeltaTime)
     			}
     		}
     	}
+
+	// Draw throw prediction when in thrown-ready
+	if (bDrawThrowPrediction && CombatState == ECombatState::ThrownReady)
+	{
+		FVector Start, Vel;
+		ComputeThrowParams(Start, Vel);
+		FPredictProjectilePathParams PredictParams(10.f, Start, Vel, 5.f, ECC_Visibility);
+		PredictParams.bTraceWithCollision = true;
+		FPredictProjectilePathResult PredictResult;
+		if (UGameplayStatics::PredictProjectilePath(this, PredictParams, PredictResult))
+		{
+			for (int32 i = 0; i < PredictResult.PathData.Num() - 1; ++i)
+			{
+				DrawDebugLine(GetWorld(), PredictResult.PathData[i].Location, PredictResult.PathData[i+1].Location, FColor::Cyan, false, 0.f, 0, 0.75f);
+			}
+			DrawDebugSphere(GetWorld(), PredictResult.HitResult.ImpactPoint, 8.f, 12, FColor::Red, false, 0.f);
+		}
+	}
 
     // Removed SPD on-screen movement debug overlay
 }
@@ -330,8 +372,21 @@ void ATPSPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Started, this, &ATPSPlayer::SprintStarted);
 		EnhancedInputComponent->BindAction(SprintAction, ETriggerEvent::Completed, this, &ATPSPlayer::SprintStopped);
 
+
 		// Arm/Unarm Toggle
 		EnhancedInputComponent->BindAction(ArmAction, ETriggerEvent::Started, this, &ATPSPlayer::ToggleArmed);
+
+		// Thrown-Ready toggle (optional IA)
+		if (ThrowReadyAction)
+		{
+			EnhancedInputComponent->BindAction(ThrowReadyAction, ETriggerEvent::Started, this, &ATPSPlayer::ToggleThrownReady);
+		}
+
+		// Dedicated Throw input (optional IA). If not set, FireAction while ThrownReady will throw.
+		if (ThrowAction)
+		{
+			EnhancedInputComponent->BindAction(ThrowAction, ETriggerEvent::Started, this, &ATPSPlayer::StartThrow);
+		}
 	}
 }
 
@@ -436,6 +491,18 @@ void ATPSPlayer::AimStopped()
 
 void ATPSPlayer::StartFire()
 {
+	// If in thrown-ready, pressing Fire throws the grenade
+	if (CombatState == ECombatState::ThrownReady)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("StartFire in ThrownReady -> StartThrow"));
+		}
+		UE_LOG(LogTemp, Log, TEXT("StartFire(): ThrownReady -> StartThrow"));
+		StartThrow();
+		return;
+	}
+
 	if (CombatState != ECombatState::Armed)
 	{
 		return;
@@ -449,6 +516,47 @@ void ATPSPlayer::StopFire()
 {
 	GetWorldTimerManager().ClearTimer(TimerHandle_AutomaticFire);
 	UpdateRotationSettings();
+}
+
+void ATPSPlayer::ToggleThrownReady()
+{
+    if (CombatState == ECombatState::ThrownReady)
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("ToggleThrownReady -> Unarmed"));
+        }
+        UE_LOG(LogTemp, Log, TEXT("ToggleThrownReady(): Leaving ThrownReady -> Unarmed"));
+        RequestSetCombatState(ECombatState::Unarmed);
+    }
+    else
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("ToggleThrownReady -> SetThrownReady"));
+        }
+        UE_LOG(LogTemp, Log, TEXT("ToggleThrownReady(): Enter ThrownReady"));
+        SetThrownReady();
+    }
+}
+
+void ATPSPlayer::StartThrow()
+{
+    if (CombatState != ECombatState::ThrownReady)
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("StartThrow rejected: Not in ThrownReady"));
+        }
+        UE_LOG(LogTemp, Warning, TEXT("StartThrow(): Rejected. CombatState=%d"), (int32)CombatState);
+        return;
+    }
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("StartThrow accepted"));
+    }
+    UE_LOG(LogTemp, Log, TEXT("StartThrow(): Proceed"));
+    ThrowGrenade();
 }
 
 void ATPSPlayer::UpdateRotationSettings()
@@ -629,6 +737,16 @@ void ATPSPlayer::OnHealthChanged(UHealthComponent* OwningHealthComp, float Healt
             }
         }
     }
+}
+
+void ATPSPlayer::ComputeThrowParams(FVector& OutStart, FVector& OutVelocity) const
+{
+    // Start from camera slightly forward to avoid self collision
+    const FVector CamLoc = FollowCamera ? FollowCamera->GetComponentLocation() : (GetActorLocation() + FVector(0,0,60));
+    const FRotator CamRot = FollowCamera ? FollowCamera->GetComponentRotation() : GetControlRotation();
+    const FVector Forward = CamRot.Vector();
+    OutStart = CamLoc + Forward * 30.f; // small offset ahead of camera
+    OutVelocity = Forward * ThrowSpeed;
 }
 
 void ATPSPlayer::OnDeath()
@@ -862,5 +980,78 @@ void ATPSPlayer::ToggleArmed()
 
 void ATPSPlayer::SetThrownReady()
 {
-	RequestSetCombatState(ECombatState::ThrownReady);
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("SetThrownReady()"));
+    }
+    UE_LOG(LogTemp, Log, TEXT("SetThrownReady()"));
+    RequestSetCombatState(ECombatState::ThrownReady);
+}
+
+void ATPSPlayer::ThrowGrenade()
+{
+    if (!GrenadeClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("GrenadeClass not set on TPSPlayer"));
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Red, TEXT("Throw failed: GrenadeClass not set"));
+        }
+        // Still exit thrown-ready so player isn't stuck
+        RequestSetCombatState(ECombatState::Unarmed);
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    FVector Start, Vel;
+    ComputeThrowParams(Start, Vel);
+    if (GEngine)
+    {
+        const FString Msg = FString::Printf(TEXT("Throw params: Start=%s Speed=%.1f"), *Start.ToCompactString(), Vel.Length());
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::White, Msg);
+    }
+    UE_LOG(LogTemp, Log, TEXT("ThrowGrenade(): Start=(%s) Vel=%.1f"), *Start.ToString(), Vel.Length());
+    // Visualize start and direction
+    DrawDebugSphere(GetWorld(), Start, 8.f, 12, FColor::White, false, 2.0f);
+    DrawDebugLine(GetWorld(), Start, Start + Vel.GetSafeNormal() * 200.f, FColor::Green, false, 2.0f, 0, 1.5f);
+
+    FActorSpawnParameters Params;
+    Params.Owner = this;
+    Params.Instigator = GetInstigator();
+    AThrowableGrenade* Grenade = World->SpawnActor<AThrowableGrenade>(GrenadeClass, Start, Vel.Rotation(), Params);
+    if (Grenade)
+    {
+        if (UProjectileMovementComponent* Move = Grenade->ProjectileMovement)
+        {
+            Move->Velocity = Vel;
+        }
+        Grenade->FuseTime = GrenadeFuseTime;
+        Grenade->ActivateFuse();
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("Grenade spawned + fuse started"));
+        }
+        UE_LOG(LogTemp, Log, TEXT("ThrowGrenade(): Spawn success -> Fuse=%.2fs"), GrenadeFuseTime);
+    }
+    else
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Grenade spawn FAILED (check collision/class)"));
+        }
+        UE_LOG(LogTemp, Error, TEXT("ThrowGrenade(): Spawn FAILED at Start=%s"), *Start.ToString());
+    }
+    
+    // Return to unarmed after throw; weapon stays on back
+    RequestSetCombatState(ECombatState::Unarmed);
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Cyan, TEXT("State -> Unarmed after throw"));
+    }
+    UE_LOG(LogTemp, Log, TEXT("ThrowGrenade(): State -> Unarmed"));
 }

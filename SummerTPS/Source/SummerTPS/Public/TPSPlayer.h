@@ -10,6 +10,7 @@ class UInputAction;
 struct FInputActionValue;
 class UAnimMontage;
 class UUserWidget;
+class AThrowableGrenade;
 
 UENUM(BlueprintType)
 enum class ECombatState : uint8
@@ -102,9 +103,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* AimAction;
 
-	/** Fire Input Action */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	UInputAction* FireAction;
+    /** Fire Input Action */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* FireAction;
+
+    /** Toggle Thrown-Ready Input Action (optional) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* ThrowReadyAction;
+
+    /** Direct Throw Input Action (optional). If not set, FireAction is reused while ThrownReady. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+    UInputAction* ThrowAction;
 
 	/** Cover Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
@@ -130,11 +139,17 @@ protected:
 	/** Called for aiming input (stop) */
 	void AimStopped();
 
-	/** Called for firing input (start) */
-	void StartFire();
+    /** Called for firing input (start) */
+    void StartFire();
 
-	/** Called for firing input (stop) */
-	void StopFire();
+    /** Called for firing input (stop) */
+    void StopFire();
+
+    /** Called to toggle thrown-ready state */
+    void ToggleThrownReady();
+
+    /** Called for throw input */
+    void StartThrow();
 
 	/** Called for cover input */
 	void Cover();
@@ -152,17 +167,37 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	class USceneComponent* ProjectileSpawnPoint;
 
-	/** Projectile class to spawn */
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
-	TSubclassOf<class AActor> ProjectileClass; // Using AActor for now, can be changed to a specific projectile class later
+    /** Projectile class to spawn */
+    UPROPERTY(EditDefaultsOnly, Category = "Projectile")
+    TSubclassOf<class AActor> ProjectileClass; // Using AActor for now, can be changed to a specific projectile class later
 
-	/** Niagara FX to spawn on fire */
-	UPROPERTY(EditAnywhere, Category = "Effects")
-	class UNiagaraSystem* FireEffect;
+    /** Niagara FX to spawn on fire */
+    UPROPERTY(EditAnywhere, Category = "Effects")
+    class UNiagaraSystem* FireEffect;
 
-	/** Speed used for the projectile trajectory prediction */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (AllowPrivateAccess = "true"))
-	float ProjectilePredictionSpeed;
+    /** Speed used for the projectile trajectory prediction */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile", meta = (AllowPrivateAccess = "true"))
+    float ProjectilePredictionSpeed;
+
+    /************************************************************************
+    * Throwable (Grenade)
+    ************************************************************************/
+
+    /** Grenade class to spawn when throwing */
+    UPROPERTY(EditDefaultsOnly, Category = "Throwable")
+    TSubclassOf<AThrowableGrenade> GrenadeClass;
+
+    /** Initial throw speed for prediction and launch */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable")
+    float ThrowSpeed = 1200.f;
+
+    /** Fuse time to set on grenade after throwing */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable")
+    float GrenadeFuseTime = 2.5f;
+
+    /** Whether to draw predicted throw arc while ThrownReady */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Throwable")
+    bool bDrawThrowPrediction = true;
 
 	/** Default walk speed of the character */
 	UPROPERTY(EditDefaultsOnly, Category = "Movement")
@@ -268,8 +303,11 @@ private:
 	/** Flag to track if the dedicated aim button is pressed */
 	bool bIsAiming;
 
-	/** Flag to track if the player is sprinting */
-	bool bIsSprinting;
+    /** Flag to track if the player is sprinting */
+    bool bIsSprinting;
+
+    /** Helper to compute throw start location and velocity */
+    void ComputeThrowParams(FVector& OutStart, FVector& OutVelocity) const;
 
     /** Updates the character's rotation settings based on aiming and firing states */
     void UpdateRotationSettings();
@@ -354,6 +392,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Combat")
     void SetThrownReady();
+
+    /** Perform the actual throw (spawn and launch grenade) */
+    void ThrowGrenade();
 
     /************************************************************************
     * Debug
