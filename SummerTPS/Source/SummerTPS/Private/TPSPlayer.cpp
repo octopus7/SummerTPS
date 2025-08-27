@@ -647,10 +647,13 @@ void ATPSPlayer::OnDeath()
 		DisableInput(PlayerController);
 	}
 
-	// Ragdoll
-	GetMesh()->SetSimulatePhysics(true);
-	GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
-	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    // Ragdoll: simulate, but do not physically affect other Pawns
+    GetMesh()->SetSimulatePhysics(true);
+    GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
+    // Prevent ragdoll from pushing characters (ignore Pawn channel)
+    GetMesh()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+    GetMesh()->SetGenerateOverlapEvents(false);
+    GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	// Stop character movement
 	GetCharacterMovement()->StopMovementImmediately();

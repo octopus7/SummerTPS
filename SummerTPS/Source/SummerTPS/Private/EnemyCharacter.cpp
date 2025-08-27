@@ -135,6 +135,9 @@ void AEnemyCharacter::HandleDeath()
         // 스켈레탈 메시 랙돌 처리
         Skel->SetSimulatePhysics(true);
         Skel->SetCollisionProfileName(TEXT("Ragdoll"));
+        // 랙돌이 다른 Pawn(플레이어/적)을 물리적으로 밀지 않도록 무시
+        Skel->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+        Skel->SetGenerateOverlapEvents(false);
     }
 
     // 컨트롤러 무력화 및 분리
